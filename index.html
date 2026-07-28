@@ -1,0 +1,1993 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Gainz</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gainz">
+<meta name="theme-color" content="#0B0E14">
+<link id="aicon" rel="apple-touch-icon">
+<link id="mfst" rel="manifest">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0B0E14;color:#E6EDF3;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',sans-serif;-webkit-tap-highlight-color:transparent;overflow-x:hidden}
+input,button,select,textarea{font-family:inherit}
+#app{min-height:100vh;padding-bottom:90px}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:#2A3140;border-radius:3px}
+#splash{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0B0E14;z-index:9999;gap:14px}
+.dot{width:6px;height:6px;border-radius:50%;background:#FF6B35;display:inline-block;animation:pu 1.1s ease-in-out infinite}
+.dot:nth-child(2){animation-delay:.18s}.dot:nth-child(3){animation-delay:.36s}
+@keyframes pu{0%,100%{opacity:.15;transform:scale(.7)}50%{opacity:1;transform:scale(1)}}
+</style>
+</head>
+<body>
+<div id="splash">
+  <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 7.5C4.8 8.2 3 9.9 3 12s1.8 3.8 4 4.5V7.5z"/>
+    <rect x="7" y="10.5" width="2" height="3" rx="0.6"/>
+    <line x1="9" y1="12" x2="15" y2="12" stroke-width="2.2"/>
+    <rect x="15" y="10.5" width="2" height="3" rx="0.6"/>
+    <path d="M17 7.5C19.2 8.2 21 9.9 21 12s-1.8 3.8-4 4.5V7.5z"/>
+  </svg>
+  <div style="display:flex;gap:6px"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+</div>
+<div id="app"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/preact@10.19.3/dist/preact.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/preact@10.19.3/hooks/dist/hooks.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script>
+'use strict';
+const {h,render}=preact;
+const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
+const html=htm.bind(h);
+
+/* ── TOKENS ── */
+const C={bg:"#0B0E14",s1:"#13181F",s2:"#1A2030",border:"#1E2530",
+  text:"#E6EDF3",muted:"#556070",dim:"#2A3140",
+  accent:"#FF6B35",ok:"#34D399",blue:"#4C9EEB",purple:"#A78BFA",amber:"#F59E0B",red:"#F87171"};
+const GOALS={kcal:3000,protein:150,carbs:350,fat:80};
+/* ── TACO EXTRA (alimentos naturais e regionais) ── */
+const TACO_EXTRA=[
+  // Cereais e derivados
+  {id:101,n:"Cuscuz milho cozido",k:111,p:2.5,c:23.0,f:0.8},{id:102,n:"Fubá cozido (angu)",k:65,p:1.5,c:14.2,f:0.3},
+  {id:103,n:"Farinha de mandioca",k:361,p:1.6,c:85.6,f:0.5},{id:104,n:"Biscoito polvilho salgado",k:468,p:3.5,c:66.0,f:20.0},
+  {id:105,n:"Beiju tapioca",k:331,p:0.5,c:82.5,f:0.2},{id:106,n:"Canjica branca cozida",k:89,p:2.4,c:19.0,f:0.5},
+  // Proteínas
+  {id:110,n:"Linguiça frango grelhada",k:212,p:16.5,c:2.0,f:15.5},{id:111,n:"Linguiça calabresa grelhada",k:305,p:14.0,c:1.5,f:27.0},
+  {id:112,n:"Sardinha em lata (óleo)",k:208,p:23.7,c:0.0,f:12.0},{id:113,n:"Camarão cozido",k:99,p:20.3,c:0.9,f:1.4},
+  {id:114,n:"Presunto fatiado",k:145,p:17.5,c:2.5,f:7.0},{id:115,n:"Peito de peru defumado",k:109,p:16.4,c:2.0,f:4.2},
+  {id:116,n:"Copa fatiada",k:296,p:17.0,c:0.5,f:25.0},{id:117,n:"Bacalhau dessalgado cozido",k:152,p:32.0,c:0.0,f:2.5},
+  {id:118,n:"Carne seca cozida",k:218,p:31.0,c:0.0,f:10.5},{id:119,n:"Frango assado sem pele",k:181,p:29.0,c:0.0,f:6.5},
+  // Laticínios
+  {id:120,n:"Queijo prato fatiado",k:360,p:24.0,c:1.5,f:28.5},{id:121,n:"Ricota",k:135,p:11.0,c:3.5,f:8.5},
+  {id:122,n:"Leite fermentado",k:74,p:3.2,c:12.5,f:1.0},{id:123,n:"Bebida láctea",k:74,p:2.5,c:13.5,f:1.5},
+  {id:124,n:"Creme de leite",k:296,p:2.2,c:3.5,f:30.0},
+  // Verduras e legumes
+  {id:130,n:"Mandioca cozida",k:125,p:0.9,c:30.0,f:0.1},{id:131,n:"Inhame cozido",k:97,p:2.2,c:22.5,f:0.2},
+  {id:132,n:"Chuchu cozido",k:21,p:0.7,c:4.3,f:0.1},{id:133,n:"Quiabo cozido",k:25,p:1.9,c:4.5,f:0.2},
+  {id:134,n:"Jiló cozido",k:22,p:1.0,c:4.5,f:0.2},{id:135,n:"Abóbora cozida",k:26,p:1.0,c:5.5,f:0.2},
+  {id:136,n:"Pepino cru",k:13,p:0.7,c:2.4,f:0.1},{id:137,n:"Beterraba cozida",k:39,p:1.5,c:8.5,f:0.1},
+  {id:138,n:"Milho verde cozido",k:123,p:3.5,c:25.0,f:1.5},{id:139,n:"Ervilha cozida",k:70,p:4.8,c:11.0,f:0.5},
+  {id:140,n:"Berinjela cozida",k:23,p:1.0,c:4.8,f:0.2},{id:141,n:"Pimentão cru",k:28,p:1.0,c:6.0,f:0.3},
+  // Frutas
+  {id:150,n:"Maracujá polpa",k:68,p:2.4,c:13.0,f:1.0},{id:151,n:"Caju",k:43,p:0.8,c:10.2,f:0.4},
+  {id:152,n:"Goiaba",k:54,p:2.6,c:10.5,f:0.9},{id:153,n:"Abacaxi",k:48,p:0.9,c:12.3,f:0.1},
+  {id:154,n:"Melancia",k:33,p:0.9,c:7.9,f:0.2},{id:155,n:"Melão",k:29,p:0.8,c:6.8,f:0.1},
+  {id:156,n:"Uva itália",k:74,p:0.8,c:19.0,f:0.4},{id:157,n:"Pêra",k:53,p:0.4,c:14.1,f:0.1},
+  {id:158,n:"Mamão formosa",k:40,p:0.5,c:10.4,f:0.1},{id:159,n:"Coco fresco",k:354,p:3.4,c:15.2,f:34.0},
+  // Outros
+  {id:160,n:"Açúcar cristal",k:387,p:0.0,c:99.9,f:0.0},{id:161,n:"Açúcar mascavo",k:371,p:0.7,c:95.5,f:0.1},
+  {id:162,n:"Farinha de trigo",k:361,p:9.8,c:75.1,f:1.0},{id:163,n:"Amido de milho (maisena)",k:381,p:0.3,c:93.9,f:0.0},
+  {id:164,n:"Leite de coco",k:192,p:2.1,c:6.4,f:18.5},{id:165,n:"Azeite de dendê",k:884,p:0.0,c:0.0,f:100.0},
+  {id:166,n:"Vinagre",k:18,p:0.1,c:3.5,f:0.0},{id:167,n:"Shoyu",k:60,p:5.5,c:8.5,f:0.1},
+  // Adicionados — variações comuns buscadas
+  {id:170,n:"Banana prata",k:98,p:1.3,c:26.0,f:0.1},{id:171,n:"Banana maçã",k:87,p:1.1,c:22.3,f:0.1},
+  {id:172,n:"Frango peito desfiado cozido",k:163,p:31.0,c:0.0,f:3.6},{id:173,n:"Frango desfiado (coxa/sobrecoxa) cozido",k:195,p:26.5,c:0.0,f:9.0},
+  {id:174,n:"Achocolatado em pó",k:380,p:3.5,c:88.0,f:2.0},{id:175,n:"Achocolatado pronto (líquido)",k:65,p:2.0,c:11.5,f:1.5},
+  {id:176,n:"Whey protein sabor chocolate",k:375,p:70.0,c:11.0,f:6.0},{id:177,n:"Whey protein sabor baunilha",k:372,p:72.0,c:9.5,f:5.5},
+  {id:178,n:"Achocolatado em pó Nescau Protein",k:367,p:30.0,c:50.0,f:3.7},
+];
+
+/* ── WORKOUT DEFAULTS ── */
+const WD_DEFAULT=[
+  {n:1,title:"PEITO + OMBROS",tag:"PUSH",col:"#FF6B35",dim:"rgba(255,107,53,.10)",
+   ex:[{n:"Supino reto barra",d:"4×5–7",note:"carga estável"},{n:"Supino inclinado máquina",d:"4×8–10",note:"novo ângulo"},
+       {n:"Crucifixo reto halter",d:"3×12–15",note:"novo"},{n:"Cross-over polia baixa",d:"3×12–15",note:"foco peitoral superior"},
+       {n:"Elevação lateral halter",d:"4×12–15"},{n:"Crucifixo invertido halter",d:"3×12–15",note:"novo · deltoide posterior"}],
+   rest:["90–120s compostos","45–60s isoladores"]},
+  {n:2,title:"COSTAS + BÍCEPS",tag:"PULL",col:"#4C9EEB",dim:"rgba(76,158,235,.10)",
+   ex:[{n:"Barra fixa Graviton / lastro",d:"4×6–8",note:"↑ reps"},{n:"Remada cavalinho (T-bar row)",d:"4×8–10",note:"novo ângulo"},
+       {n:"Puxada aberta pronada",d:"3×10–12",note:"foco largura"},{n:"Remada baixa unilateral polia",d:"3×10–12",note:"novo · tensão constante"},
+       {n:"Rosca scott barra W",d:"3×8–10",note:"novo"},{n:"Rosca martelo halter em pé",d:"3×10–12"},
+       {n:"Rosca concentrada halter",d:"2×12–15",note:"novo · pico de contração"}],
+   rest:["90–120s costas","60s bíceps"]},
+  {n:3,title:"OMBROS + TRÍCEPS",tag:"PUSH",col:"#A78BFA",dim:"rgba(167,139,250,.10)",
+   ex:[{n:"Desenvolvimento Arnold halter",d:"4×6–8",note:"novo · recrutamento variado"},
+       {n:"Elev. lateral cabo + Face pull",d:"4×(12–15+15–20)",ss:true},
+       {n:"Remada alta halter",d:"3×10–12",note:"novo"},{n:"Tríceps testa barra EZ",d:"3×10–12",note:"novo · cabeça longa"},
+       {n:"Tríceps coice halter",d:"3×12–15",note:"pico de contração"},{n:"Mergulho no banco",d:"2×10–12",note:"progressão peso corporal"}],
+   rest:["90s compostos","45–60s isoladores"]},
+  {n:4,title:"COSTAS — UPPER BACK",tag:"PULL",col:"#34D399",dim:"rgba(52,211,153,.10)",
+   ex:[{n:"Face pull com pausa",d:"4×15–20",note:"pausa 1s no pico"},{n:"Remada cabo unilateral peito apoiado",d:"3×10–12",note:"novo · espessura"},
+       {n:"Remada baixa fechada polia",d:"4×8–10",note:"pegada fechada"},{n:"Puxada unilateral polia",d:"3×10–12 cada lado",note:"novo · corrige assimetrias"},
+       {n:"Encolhimento barra",d:"3×8–10",note:"maior carga"}],
+   rest:["75–90s","Foco em postura e contração"]},
+  {n:5,title:"PERNAS COMPLETO",tag:"LEGS",col:"#F87171",dim:"rgba(248,113,113,.10)",
+   ex:[{n:"Agachamento búlgaro halter",d:"4×8–10 cada perna",note:"novo · unilateral"},{n:"Leg press 45° pés altos",d:"3×10–12",note:"foco posterior/glúteo"},
+       {n:"Cadeira extensora unilateral",d:"3×12–15",note:"pico de contração"},{n:"Stiff halter",d:"4×8–10",note:"novo · posterior de coxa"},
+       {n:"Abdutora + Adutora",d:"3×15–20",ss:true,note:"↑ reps"},{n:"Panturrilha no leg press",d:"3×12–15",note:"nova amplitude"},
+       {n:"Prancha lateral + elevação de pernas",d:"3 rounds",note:"variação lateral"}],
+   rest:["90–120s compostos","60s isoladores"]},
+];
+const TAGC={PUSH:"#FF6B35",PULL:"#4C9EEB",LEGS:"#F87171"};
+
+/* ── FOODS TACO ── */
+const TACO=[
+  {id:1,n:"Arroz branco cozido",k:128,p:2.5,c:28.1,f:0.2},{id:2,n:"Arroz integral cozido",k:124,p:2.6,c:25.8,f:1.0},
+  {id:3,n:"Aveia em flocos",k:394,p:13.9,c:66.6,f:8.5},{id:4,n:"Pão francês",k:300,p:8.0,c:58.6,f:3.1},
+  {id:5,n:"Pão de forma integral",k:253,p:8.2,c:44.1,f:4.2},{id:6,n:"Macarrão cozido",k:133,p:4.5,c:27.0,f:0.9},
+  {id:7,n:"Batata inglesa cozida",k:87,p:1.9,c:19.8,f:0.1},{id:8,n:"Batata doce cozida",k:77,p:1.4,c:17.3,f:0.1},
+  {id:9,n:"Tapioca",k:358,p:0.3,c:88.7,f:0.0},{id:10,n:"Quinoa cozida",k:120,p:4.4,c:21.3,f:1.9},
+  {id:11,n:"Feijão carioca cozido",k:76,p:4.8,c:13.6,f:0.5},{id:12,n:"Feijão preto cozido",k:77,p:4.5,c:14.0,f:0.5},
+  {id:13,n:"Lentilha cozida",k:93,p:6.3,c:16.4,f:0.4},{id:14,n:"Grão de bico cozido",k:164,p:8.9,c:27.4,f:2.6},
+  {id:15,n:"Frango peito grelhado",k:159,p:32.0,c:0.0,f:3.2},{id:16,n:"Frango coxa grelhada",k:179,p:24.5,c:0.0,f:8.5},
+  {id:17,n:"Carne bovina patinho",k:219,p:30.7,c:0.0,f:10.4},{id:18,n:"Carne bovina coxão mole",k:168,p:29.3,c:0.0,f:5.1},
+  {id:19,n:"Tilápia grelhada",k:96,p:20.1,c:0.0,f:1.7},{id:20,n:"Salmão grelhado",k:182,p:25.4,c:0.0,f:8.1},
+  {id:21,n:"Atum em lata (água)",k:119,p:26.0,c:0.0,f:1.0},
+  {id:30,n:"Ovo inteiro cozido",k:155,p:12.6,c:1.1,f:10.6},{id:31,n:"Clara de ovo cozida",k:52,p:10.9,c:0.7,f:0.2},
+  {id:32,n:"Leite integral",k:61,p:3.2,c:4.8,f:3.3},{id:33,n:"Leite desnatado",k:35,p:3.5,c:4.8,f:0.2},
+  {id:34,n:"Iogurte natural",k:66,p:3.5,c:4.9,f:3.3},{id:35,n:"Iogurte grego",k:115,p:9.0,c:4.5,f:6.0},
+  {id:36,n:"Queijo cottage",k:85,p:12.5,c:2.7,f:2.7},{id:37,n:"Queijo muçarela",k:280,p:21.6,c:2.2,f:20.0},
+  {id:38,n:"Requeijão cremoso",k:246,p:8.3,c:3.6,f:22.3},
+  {id:40,n:"Banana nanica",k:92,p:1.3,c:23.8,f:0.1},{id:41,n:"Maçã",k:56,p:0.3,c:15.2,f:0.1},
+  {id:42,n:"Laranja",k:47,p:0.9,c:11.8,f:0.1},{id:43,n:"Abacate",k:96,p:1.2,c:6.0,f:8.4},
+  {id:44,n:"Morango",k:30,p:0.7,c:7.1,f:0.4},{id:46,n:"Manga",k:64,p:0.9,c:17.0,f:0.2},
+  {id:50,n:"Brócolis cozido",k:27,p:3.0,c:3.4,f:0.4},{id:51,n:"Espinafre cozido",k:23,p:3.0,c:2.8,f:0.4},
+  {id:52,n:"Cenoura cozida",k:41,p:1.0,c:9.6,f:0.2},{id:53,n:"Tomate",k:15,p:0.9,c:3.1,f:0.2},
+  {id:57,n:"Azeite de oliva",k:884,p:0.0,c:0.0,f:100.0},{id:58,n:"Manteiga",k:717,p:0.9,c:0.0,f:81.1},
+  {id:59,n:"Óleo de coco",k:862,p:0.0,c:0.0,f:100.0},{id:60,n:"Pasta de amendoim",k:592,p:25.8,c:21.6,f:50.4},
+  {id:61,n:"Amendoim torrado",k:581,p:26.0,c:15.3,f:49.3},{id:62,n:"Castanha de caju",k:570,p:15.3,c:29.1,f:46.3},
+  {id:63,n:"Castanha do Pará",k:656,p:14.3,c:11.7,f:63.5},
+  {id:65,n:"Whey protein concentrado",k:370,p:74.0,c:8.5,f:5.5},{id:66,n:"Whey protein isolado",k:360,p:90.0,c:2.0,f:1.0},
+  {id:67,n:"Caseína",k:360,p:80.0,c:6.0,f:2.0},{id:68,n:"Albumina",k:356,p:82.0,c:4.0,f:0.0},
+  {id:69,n:"Mel",k:309,p:0.4,c:84.0,f:0.0},{id:70,n:"Granola",k:440,p:8.5,c:68.0,f:14.0},
+];
+const FU={32:{ml:1.03},33:{ml:1.03},34:{ml:1.04},35:{ml:1.06},57:{ml:0.91},59:{ml:0.91},69:{ml:1.40},175:{ml:1.03},
+  30:{un:50},31:{un:33},40:{un:118},41:{un:182},42:{un:131},43:{un:200},44:{un:12},4:{un:50},5:{un:25},170:{un:98},171:{un:90}};
+
+/* ── HELPERS ── */
+const pad=n=>String(n).padStart(2,'0');
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());};
+const offsetDate=n=>{const d=new Date();d.setDate(d.getDate()-n);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());};
+const tkey=n=>'tk:'+offsetDate(n);
+const mkey=(y,m)=>y+'-'+pad(m+1);
+const ptDate=s=>new Date(s+'T12:00:00').toLocaleDateString('pt-BR',{day:'numeric',month:'short'});
+const ptMonth=(y,m)=>new Date(y,m,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+const WD_ABBR=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MO_ABBR=['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const ptDateShort=s=>{const d=new Date(s+'T12:00:00');return WD_ABBR[d.getDay()]+', '+d.getDate()+' de '+MO_ABBR[d.getMonth()]+'.';};
+const macroHits=(t,g)=>{
+  const within=(v,goal)=>goal>0&&v>=goal*0.85&&v<=goal*1.15;
+  let n=0;
+  if(within(t.k,g.kcal))n++;if(within(t.p,g.protein))n++;if(within(t.c,g.carbs))n++;if(within(t.f,g.fat))n++;
+  return n;
+};
+const norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+const f2=(v)=>parseFloat(v.toFixed(2));
+const daysBetween=(dateStr)=>{const d1=new Date(dateStr+'T00:00:00'),d2=new Date();d2.setHours(0,0,0,0);
+  return Math.max(0,Math.round((d2-d1)/86400000));};
+const weeksBetween=dateStr=>Math.floor(daysBetween(dateStr)/7);
+const isWeekend=dateStr=>{const dow=new Date(dateStr+'T12:00:00').getDay();return dow===0||dow===6;};
+const ls={
+  g:k=>{try{const v=localStorage.getItem(k);return v?JSON.parse(v):null;}catch{return null;}},
+  s:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+};
+const sumM=ms=>ms.reduce((a,m)=>({k:a.k+(m.k||0),p:a.p+(m.p||0),c:a.c+(m.c||0),f:a.f+(m.f||0)}),{k:0,p:0,c:0,f:0});
+/* ── PREPARED FOODS (Pratos prontos & porções) ── */
+const PRATOS=[
+  {id:'pr01',n:"Arroz frito com ovo",k:185,p:5.2,c:28.0,f:6.0,note:"porção 150g"},
+  {id:'pr02',n:"Batata frita palito",k:312,p:3.4,c:41.0,f:15.0,note:"porção 100g"},
+  {id:'pr03',n:"Batata frita chips",k:536,p:6.6,c:53.0,f:33.0,note:"porção 50g"},
+  {id:'pr04',n:"Frango empanado frito",k:248,p:18.5,c:14.0,f:13.5,note:"1 filé ~150g"},
+  {id:'pr05',n:"Frango assado com pele",k:215,p:24.0,c:0.0,f:13.0,note:"porção 120g"},
+  {id:'pr06',n:"Banana frita",k:188,p:1.1,c:30.5,f:7.2,note:"1 unidade ~80g"},
+  {id:'pr07',n:"Ovo frito",k:196,p:13.6,c:0.3,f:15.4,note:"1 ovo ~60g"},
+  {id:'pr08',n:"Ovo mexido",k:149,p:10.6,c:1.6,f:11.2,note:"2 ovos ~100g"},
+  {id:'pr09',n:"Pão de queijo",k:336,p:6.6,c:48.0,f:13.0,note:"1 unidade ~40g"},
+  {id:'pr10',n:"Coxinha frango",k:260,p:9.0,c:27.0,f:12.5,note:"1 unidade ~80g"},
+  {id:'pr11',n:"Esfiha carne",k:242,p:9.5,c:30.0,f:9.5,note:"1 unidade ~80g"},
+  {id:'pr12',n:"Pizza muçarela",k:266,p:11.0,c:30.0,f:11.0,note:"1 fatia ~100g"},
+  {id:'pr13',n:"Pizza calabresa",k:285,p:12.0,c:29.5,f:13.0,note:"1 fatia ~100g"},
+  {id:'pr14',n:"Hambúrguer artesanal",k:295,p:20.0,c:24.0,f:13.0,note:"1 unidade ~180g"},
+  {id:'pr15',n:"Feijão tropeiro",k:148,p:7.0,c:18.0,f:5.5,note:"porção 150g"},
+  {id:'pr16',n:"Macarrão à bolonhesa",k:155,p:8.5,c:19.0,f:5.0,note:"porção 200g"},
+  {id:'pr17',n:"Filé de peixe frito",k:220,p:19.0,c:8.0,f:12.0,note:"1 filé ~120g"},
+  {id:'pr18',n:"Strogonoff de frango",k:138,p:10.5,c:7.0,f:7.5,note:"porção 200g"},
+  {id:'pr19',n:"Moqueca de peixe",k:132,p:14.0,c:4.0,f:7.0,note:"porção 200g"},
+  {id:'pr20',n:"Farofa manteiga",k:398,p:3.5,c:72.0,f:10.5,note:"porção 30g"},
+  {id:'pr21',n:"Sopa de legumes",k:48,p:2.5,c:8.0,f:0.8,note:"porção 300ml"},
+  {id:'pr22',n:"Vitamina de banana",k:98,p:3.8,c:19.0,f:1.5,note:"copo 300ml"},
+  {id:'pr23',n:"Açaí com granola",k:210,p:3.0,c:30.0,f:9.0,note:"copo 250ml"},
+  {id:'pr24',n:"Tapioca recheada frango",k:198,p:12.0,c:30.0,f:3.5,note:"1 unidade ~120g"},
+  {id:'pr25',n:"Tapioca recheada queijo",k:220,p:8.5,c:30.0,f:7.0,note:"1 unidade ~100g"},
+  {id:'pr26',n:"Brigadeiro",k:420,p:4.5,c:60.0,f:18.0,note:"1 unidade ~20g"},
+  {id:'pr27',n:"Pão na chapa manteiga",k:310,p:7.0,c:45.0,f:11.0,note:"1 unidade ~80g"},
+  {id:'pr28',n:"Nhoque ao molho",k:130,p:4.5,c:22.0,f:3.0,note:"porção 200g"},
+];
+
+const FU_PRATOS={
+  pr03:{un:50},pr06:{un:80},pr07:{un:60},pr08:{un:110},pr09:{un:40},
+  pr10:{un:80},pr11:{un:80},pr16:{un:200},pr17:{un:120},pr18:{un:200},
+  pr19:{un:200},pr20:{un:30},pr21:{ml:1.0},pr22:{ml:1.03},pr23:{ml:1.04},
+  pr24:{un:120},pr25:{un:100},pr26:{un:20},pr27:{un:80},pr28:{un:200},
+};
+
+const matchScore=(name,words)=>{
+  const fn=norm(name);
+  let score=0;
+  for(const w of words){if(fn.includes(w))score+=w.length>=4?2:1;} // palavras maiores pesam mais
+  return score;
+};
+const searchLocal=q=>{
+  if(!q||q.length<2)return[];
+  const words=norm(q).split(/\s+/).filter(Boolean);
+  const ALL_TACO=[...TACO,...TACO_EXTRA];
+  const rank=list=>list.map(f=>({f,s:matchScore(f.n,words)})).filter(x=>x.s>0)
+    .sort((a,b)=>b.s-a.s||a.f.n.length-b.f.n.length).map(x=>x.f);
+  const tr=rank(ALL_TACO).slice(0,5).map(f=>({...f,srcLabel:'TACO',srcCol:C.ok}));
+  const pr=rank(PRATOS).slice(0,4).map(f=>({...f,srcLabel:'Pratos',srcCol:'#F97316'}));
+  return[...tr,...pr];
+};
+const calcR=(food,qty,unit)=>{const u={...FU,...FU_PRATOS}[food&&food.id]||{};
+  if(unit==='ml')return(qty*(u.ml||1))/100;if(unit==='un')return(qty*(u.un||100))/100;return qty/100;};
+
+/* ── FOOD APIS ── */
+async function searchOFF(q){
+  try{
+    const r=await fetch(`https://br.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&fields=product_name,brands,nutriments,serving_size&page_size=8`);
+    const d=await r.json();
+    return (d.products||[]).filter(p=>p.product_name&&p.nutriments&&(p.nutriments['energy-kcal_100g']||p.nutriments['energy_100g']))
+      .map(p=>{const k=p.nutriments['energy-kcal_100g']||Math.round((p.nutriments['energy_100g']||0)/4.184);
+        return{id:'off_'+p.product_name,n:p.product_name+(p.brands?' · '+p.brands:''),k:Math.round(k),
+          p:f2(p.nutriments['proteins_100g']||0),c:f2(p.nutriments['carbohydrates_100g']||0),
+          f:f2(p.nutriments['fat_100g']||0),note:p.serving_size||null,srcLabel:'OFF',srcCol:C.purple};
+      }).filter(f=>f.k>0).slice(0,5);
+  }catch{return [];}
+}
+
+/* ── ICONS ── */
+const SVGD={
+  dumbbell:'<path d="M7 7.5C4.8 8.2 3 9.9 3 12s1.8 3.8 4 4.5V7.5z"/><rect x="7" y="10.5" width="2" height="3" rx="0.6"/><line x1="9" y1="12" x2="15" y2="12" stroke-width="2.2"/><rect x="15" y="10.5" width="2" height="3" rx="0.6"/><path d="M17 7.5C19.2 8.2 21 9.9 21 12s-1.8 3.8-4 4.5V7.5z"/>',
+  calendar:'<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/>',
+  trending:'<rect x="2" y="6" width="20" height="15" rx="4"/><rect x="5" y="9" width="14" height="6" rx="1.5"/><line x1="7.5" y1="11.5" x2="16.5" y2="11.5"/><line x1="9" y1="13.5" x2="15" y2="13.5"/><circle cx="7.5" cy="18.5" r="1" fill="currentColor" stroke="none"/><circle cx="16.5" cy="18.5" r="1" fill="currentColor" stroke="none"/>',
+  chart:'<circle cx="12" cy="12" r="9.5"/><path d="M12 12L12 2.5A9.5 9.5 0 0121.5 12Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M12 12L21.5 12A9.5 9.5 0 017.6 20.9Z" fill="currentColor" fill-opacity="0.12" stroke="none"/><line x1="12" y1="2.5" x2="12" y2="12"/><line x1="12" y1="12" x2="21.5" y2="12"/><line x1="12" y1="12" x2="7.6" y2="20.9"/>',
+  gear:'<circle cx="12" cy="12" r="3.2"/><path d="M12 2v2.5M12 19.5V22M4.93 4.93l1.77 1.77M17.3 17.3l1.77 1.77M2 12h2.5M19.5 12H22M4.93 19.07l1.77-1.77M17.3 6.7l1.77-1.77"/>',
+  bell:'<path d="M6 11a6 6 0 0112 0c0 5.5 2.5 7 2.5 7h-17S6 16.5 6 11z"/><path d="M10.3 21a2 2 0 003.4 0"/>',
+  flame:'<path d="M12 2c-2.5 4-4 7.5-4 10a5 5 0 0010 0c0-1.5-.6-3-1.5-4C16 10 15 12 13 12c-1.3 0-2.2-1-2.2-2.2C10.8 8 11.5 5.5 12 2z"/>',
+  check:'<circle cx="12" cy="12" r="10"/><path d="M8 12l3 3 5-6"/>',
+  utensils:'<path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2M7 2v20"/><path d="M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3v7"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 15"/>',
+  bolt:'<path d="M13 2L3 14h9l-1 8 10-12h-9z"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  camera:'<path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/>',
+  pencil:'<path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4z"/>',
+  link:'<path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
+  trash:'<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>',
+  reset:'<path d="M3 12a9 9 0 109-9 9 9 0 00-9 6"/><polyline points="3 3 3 9 9 9"/>',
+  search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
+  image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+};
+function Ic({n,size,col,style}){
+  const sz=size||20;
+  return html`<svg width=${sz} height=${sz} viewBox="0 0 24 24" fill="none"
+    stroke=${col||'currentColor'} stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
+    style=${Object.assign({display:'inline-block',flexShrink:0,verticalAlign:'middle'},style||{})}
+    dangerouslySetInnerHTML=${{__html:SVGD[n]||''}}/>`;
+}
+
+/* ── SHARED COMPONENTS ── */
+function ArcGauge({val,goal,size}){
+  size=size||148;
+  const r=(size-20)/2,cx=size/2,cy=size/2,pct=Math.min(val/goal,1);
+  const ci=2*Math.PI*r,arc=ci*0.78;
+  return html`<svg width=${size} height=${size} style=${{display:'block',flexShrink:0}}>
+    <circle cx=${cx} cy=${cy} r=${r} fill="none" stroke=${C.border} stroke-width="9" stroke-linecap="round"
+      stroke-dasharray=${arc+' '+(ci-arc)} transform=${'rotate(140 '+cx+' '+cy+')'}/>
+    <circle cx=${cx} cy=${cy} r=${r} fill="none" stroke=${pct>=1?C.ok:C.accent} stroke-width="9" stroke-linecap="round"
+      stroke-dasharray=${arc*pct+' '+(ci-arc*pct)} transform=${'rotate(140 '+cx+' '+cy+')'}
+      style=${{transition:'stroke-dasharray .5s,stroke .3s'}}/>
+    <text x=${cx} y=${cy-5} text-anchor="middle" fill=${C.text} font-size="24" font-weight="900" font-family="inherit">${Math.round(val)}</text>
+    <text x=${cx} y=${cy+12} text-anchor="middle" fill=${C.muted} font-size="9" font-family="inherit">de ${goal} kcal</text>
+    <text x=${cx} y=${cy+25} text-anchor="middle" fill=${pct>=1?C.ok:C.accent} font-size="9" font-weight="700" font-family="inherit">${Math.round(pct*100)}%</text>
+  </svg>`;}
+
+function Bar({label,val,goal,unit,color}){
+  const pct=Math.min((val/goal)*100,100);
+  return html`<div style=${{marginBottom:'8px'}}>
+    <div style=${{display:'flex',justifyContent:'space-between',marginBottom:'3px'}}>
+      <span style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase'}}>${label}</span>
+      <span style=${{fontSize:'10px',fontWeight:700,color:C.text}}>${val.toFixed(2)}<span style=${{color:C.muted,fontWeight:400}}>/${goal}${unit}</span></span>
+    </div>
+    <div style=${{background:C.border,borderRadius:'3px',height:'4px',overflow:'hidden'}}>
+      <div style=${{height:'100%',width:pct+'%',background:pct>=100?C.ok:color,borderRadius:'3px',transition:'width .4s'}}/>
+    </div>
+  </div>`;}
+
+function DayRing({pct,size,empty}){
+  size=size||44;
+  const r=(size-8)/2,cx=size/2,cy=size/2,circ=2*Math.PI*r;
+  const p=Math.min((pct||0)/100,1);
+  const col=pct>=90?C.ok:pct>=50?C.amber:C.red;
+  return html`<svg width=${size} height=${size} style=${{display:'block',flexShrink:0}}>
+    <circle cx=${cx} cy=${cy} r=${r} fill="none" stroke=${C.border} stroke-width="4"/>
+    ${!empty&&html`<circle cx=${cx} cy=${cy} r=${r} fill="none" stroke=${col} stroke-width="4" stroke-linecap="round"
+      stroke-dasharray=${circ*p+' '+(circ-circ*p)} transform=${'rotate(-90 '+cx+' '+cy+')'}
+      style=${{transition:'stroke-dasharray .4s'}}/>`}
+    ${empty
+      ?html`<circle cx=${cx} cy=${cy} r="2" fill=${C.dim}/>`
+      :html`<text x=${cx} y=${cy+4} text-anchor="middle" fill=${col} font-size="11" font-weight="800" font-family="inherit">${Math.round(pct)}%</text>`}
+  </svg>`;}
+
+
+function WChart({data,proj}){
+  if(!data||data.length<2)return null;
+  const allVals=[...data.map(w=>w.kg),...(proj||[]).map(p=>p.kg)];
+  const mn=Math.min.apply(0,allVals)-0.8,mx=Math.max.apply(0,allVals)+0.8,W=300,H=72;
+  const n=data.length,totalPts=n+(proj||[]).length;
+  const sx=i=>(i/(totalPts-1))*W;
+  const sy=v=>H-((v-mn)/(mx-mn))*(H-10)-5;
+  const histPts=data.map((w,i)=>sx(i)+','+sy(w.kg)).join(' ');
+  const lastX=sx(n-1),lastY=sy(data[n-1].kg);
+  const projPts=proj?[`${lastX},${lastY}`,...proj.map((p,i)=>sx(n+i)+','+sy(p.kg))].join(' '):null;
+  return html`<svg viewBox=${'0 0 '+W+' '+H} style=${{width:'100%',height:'72px',display:'block'}}>
+    ${projPts&&html`<polyline points=${projPts} fill="none" stroke=${C.ok+'55'} stroke-width="1.5"
+      stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="4 3"/>`}
+    <polyline points=${histPts} fill="none" stroke=${C.accent+'77'} stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${data.map((w,i)=>html`<circle key=${i} cx=${sx(i)} cy=${sy(w.kg)} r=${i===n-1?4:2.5}
+      fill=${i===n-1?C.accent:C.s1} stroke=${C.accent} stroke-width="1.5"/>`)}
+    ${proj&&proj.length>0&&html`<circle cx=${sx(totalPts-1)} cy=${sy(proj[proj.length-1].kg)} r="3.5"
+      fill="none" stroke=${C.ok} stroke-width="1.5" stroke-dasharray="2 2"/>`}
+    <text x=${sx(n-1)} y=${sy(data[n-1].kg)-8} text-anchor="middle" font-size="9" fill=${C.accent} font-weight="700">${data[n-1].kg.toFixed(1)}kg</text>
+    ${proj&&proj.length>0&&html`<text x=${sx(totalPts-1)} y=${sy(proj[proj.length-1].kg)-8} text-anchor="middle" font-size="8" fill=${C.ok}>${proj[proj.length-1].kg.toFixed(1)}kg</text>`}
+  </svg>`;}
+
+/* ── PROJEÇÃO DUPLA ── */
+function Projecao({weights}){
+  const [macroData,setMacroData]=useState({avg:0,days:0,avgProt:0});
+  const [trainData,setTrainData]=useState({perWeek:0});
+
+  useEffect(()=>{
+    // Média calórica e de proteína dos últimos 21 dias
+    let totalK=0,totalP=0,count=0;
+    for(let i=0;i<21;i++){
+      const d=ls.g(tkey(i));
+      if(d&&d.meals&&d.meals.length>0){
+        const s=sumM(d.meals);totalK+=s.k;totalP+=s.p;count++;
+      }
+    }
+    setMacroData({avg:count>0?Math.round(totalK/count):0,
+      avgProt:count>0?Math.round(totalP/count):0,days:count});
+
+    // Frequência de treino (últimas 16 semanas)
+    let ci=0;const now=new Date();
+    for(let i=0;i<4;i++){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const k=mkey(d.getFullYear(),d.getMonth());
+      const v=ls.g('ci:'+k);ci+=(v&&v.days?v.days.length:0);
+    }
+    setTrainData({perWeek:f2(ci/16)});
+  },[]);
+
+  // Regressão linear (tendência real)
+  const regression=useMemo(()=>{
+    if(weights.length<2)return null;
+    const ref=new Date(weights[0].date+'T12:00:00').getTime();
+    const xs=weights.map(w=>(new Date(w.date+'T12:00:00').getTime()-ref)/86400000);
+    const ys=weights.map(w=>w.kg),n=weights.length;
+    const spanDays=xs[n-1]-xs[0];
+    const xm=xs.reduce((a,b)=>a+b)/n,ym=ys.reduce((a,b)=>a+b)/n;
+    const num=xs.reduce((a,x,i)=>a+(x-xm)*(ys[i]-ym),0);
+    const den=xs.reduce((a,x)=>a+(x-xm)**2,0);
+    const rawSlope=den>0?num/den:0;
+    // Trava de sanidade: nenhum ganho/perda humano sustenta >1.5 kg/sem — evita que
+    // ruído de água/horário em poucos registros vire uma reta absurda ao extrapolar
+    const MAX_WEEKLY=1.5;
+    const weeklyRate=f2(Math.max(-MAX_WEEKLY,Math.min(MAX_WEEKLY,rawSlope*7)));
+    const slope=weeklyRate/7;
+    // Só é confiável com pontos suficientes espalhados por tempo suficiente
+    const MIN_POINTS=4,MIN_SPAN_DAYS=14;
+    const reliable=n>=MIN_POINTS&&spanDays>=MIN_SPAN_DAYS;
+    return{slope,lastKg:ys[n-1],weeklyRate,spanDays,points:n,reliable};
+  },[weights]);
+
+  // Projeção metabólica (baseada em surplus + frequência de treino)
+  const metabolic=useMemo(()=>{
+    if(!macroData.avg||macroData.days<3||!weights.length)return null;
+    const goals=ls.g('goals')||GOALS;
+    const dailySurplus=macroData.avg-goals.kcal;
+    // 7700 kcal ≈ 1 kg (massa corporal)
+    const rawWeekly=(dailySurplus*7)/7700;
+    // Fator de treino: mais treino = mais vai para músculo (eficiência)
+    const trainFactor=Math.min(trainData.perWeek/5,1);
+    // Fator de proteína: proteína adequada maximiza ganho muscular
+    const protFactor=Math.min(macroData.avgProt/goals.protein,1);
+    // Ganho ajustado: treino e proteína melhoram qualidade, não volume
+    const adjusted=f2(rawWeekly*(0.5+0.3*trainFactor+0.2*protFactor));
+    const lastKg=weights[weights.length-1].kg;
+    return{weeklyRate:adjusted,rawWeekly:f2(rawWeekly),
+      proj4:f2(lastKg+adjusted*4),proj8:f2(lastKg+adjusted*8),proj12:f2(lastKg+adjusted*12),
+      dailySurplus:Math.round(dailySurplus),trainFactor,protFactor};
+  },[macroData,trainData,weights]);
+
+  if(weights.length<2)return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'14px',
+    border:'1px solid '+C.border,textAlign:'center',color:C.muted,fontSize:'11px'}}>
+    Registre pelo menos 2 pesagens para ativar a projeção</div>`;
+
+  if(!regression.reliable)return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'14px',
+    border:'1px solid '+C.border,textAlign:'center',color:C.muted,fontSize:'11px'}}>
+    Dados ainda insuficientes para uma tendência confiável (${regression.points} pesagem(ns) em ${Math.round(regression.spanDays)} dia(s)).
+    <div style=${{color:C.dim,fontSize:'10px',marginTop:'6px'}}>Mínimo: 4 pesagens espalhadas em ≥14 dias.</div></div>`;
+
+  const {lastKg,weeklyRate}=regression;
+  const goals=ls.g('goals')||GOALS;
+  const surplus=macroData.avg>0?macroData.avg-goals.kcal:null;
+
+  // Pontos para o gráfico (histórico + 2 projeções)
+  const projTrend=[4,8].map(w=>({kg:f2(lastKg+weeklyRate*w)}));
+  const projMeta=metabolic?[4,8].map(w=>({kg:f2(lastKg+metabolic.weeklyRate*w)})):null;
+
+  // Gap entre projeções (revela subregistro ou retenção hídrica)
+  const gap=metabolic?f2(weeklyRate-metabolic.weeklyRate):null;
+
+  // Insight principal
+  const insight=(()=>{
+    if(weights.length<3)return{txt:'Registre o peso semanalmente (mesmo dia/hora) para maior precisão.',col:C.muted};
+    if(!metabolic||macroData.days<5)return{txt:'Registre as refeições por pelo menos 5 dias para ativar a projeção metabólica.',col:C.blue};
+    if(gap!==null&&Math.abs(gap)>0.3)
+      return gap>0
+        ? {txt:`Você ganha mais que o previsto (+${gap.toFixed(2)} kg/sem). Pode haver retenção hídrica ou excesso calórico não registrado.`,col:C.amber}
+        : {txt:`Você ganha menos que o esperado (${gap.toFixed(2)} kg/sem vs previsto). Verifique se todas as refeições estão sendo registradas.`,col:C.amber};
+    if(weeklyRate>0.5)return{txt:`Ritmo de ganho alto (+${weeklyRate.toFixed(2)} kg/sem). Para bulk limpo, reduza ~${Math.round((weeklyRate-0.35)*7700/7)} kcal/dia.`,col:C.red};
+    if(weeklyRate>=0.15)return{txt:`Progressão ideal (+${weeklyRate.toFixed(2)} kg/sem). No ritmo atual você chegará a ${f2(lastKg+weeklyRate*12).toFixed(1)} kg em 12 semanas.`,col:C.ok};
+    if(weeklyRate>-0.05)return{txt:`Peso estável. Aumente ~${Math.round((0.3*7700)/7)} kcal/dia para entrar em superávit de ganho.`,col:C.blue};
+    return{txt:`Perda de peso detectada (${weeklyRate.toFixed(2)} kg/sem). Aumente as calorias diárias.`,col:C.red};
+  })();
+
+  return html`<div>
+    ${/* Projeção em 4/8/12 semanas — dupla coluna */null}
+    <div style=${{background:C.s1,borderRadius:'13px',padding:'14px',border:'1px solid '+C.border,marginBottom:'10px'}}>
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'12px',
+        display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+        <span>Projeção</span>
+        <div style=${{display:'flex',gap:'10px',fontSize:'9px'}}>
+          <span style=${{display:'flex',alignItems:'center',gap:'4px'}}>
+            <svg width="14" height="4"><line x1="0" y1="2" x2="14" y2="2" stroke=${C.accent} stroke-width="1.5"/></svg>Real
+          </span>
+          ${metabolic&&html`<span style=${{display:'flex',alignItems:'center',gap:'4px'}}>
+            <svg width="14" height="4"><line x1="0" y1="2" x2="14" y2="2" stroke=${C.ok} stroke-width="1.5" stroke-dasharray="3 2"/></svg>Metabólica
+          </span>`}
+        </div>
+      </div>
+
+      <div style=${{display:'flex',marginBottom:'12px'}}>
+        ${[['4 sem',4],[' 8 sem',8],['12 sem',12]].map((s,i)=>html`<div key=${i} style=${{flex:1,textAlign:'center',
+          borderRight:i<2?'1px solid '+C.border:'none',padding:'0 6px'}}>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',marginBottom:'4px'}}>${s[0]}</div>
+          <div style=${{fontSize:'14px',fontWeight:900,color:i===2?C.accent:C.text}}>
+            ${f2(lastKg+weeklyRate*s[1]).toFixed(1)}kg</div>
+          <div style=${{fontSize:'8px',color:weeklyRate>=0?C.ok:C.red,fontWeight:700}}>
+            ${(weeklyRate*s[1]>=0?'+':'')+f2(weeklyRate*s[1]).toFixed(2)}kg</div>
+          ${metabolic&&html`<div style=${{fontSize:'8px',color:C.ok+'99',marginTop:'2px'}}>
+            ${(metabolic.weeklyRate*s[1]>=0?'+':'')+f2(metabolic.weeklyRate*s[1]).toFixed(2)} prev.
+          </div>`}
+        </div>`)}
+      </div>
+
+      <${WChart} data=${weights.slice(-8)} proj=${projTrend}/>
+    </div>
+
+    ${/* Indicadores ── 2×2 grid */null}
+    <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'10px'}}>
+      <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Ritmo real</div>
+        <div style=${{fontSize:'15px',fontWeight:900,color:weeklyRate>=0.15&&weeklyRate<=0.5?C.ok:weeklyRate>0.5?C.red:C.muted}}>
+          ${weeklyRate>=0?'+':''}${weeklyRate.toFixed(2)} kg/sem</div>
+        <div style=${{fontSize:'9px',color:C.dim}}>ideal: +0.15 a +0.50</div>
+      </div>
+      <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Ritmo metabólico</div>
+        ${metabolic?html`<div style=${{fontSize:'15px',fontWeight:900,color:C.ok}}>
+          ${metabolic.weeklyRate>=0?'+':''}${metabolic.weeklyRate.toFixed(2)} kg/sem</div>
+          <div style=${{fontSize:'9px',color:C.dim}}>surplus: ${metabolic.dailySurplus>=0?'+':''}${metabolic.dailySurplus} kcal/dia</div>`
+        :html`<div style=${{fontSize:'11px',color:C.dim,marginTop:'4px'}}>Registre macros ≥5 dias</div>`}
+      </div>
+      <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Frequência treino</div>
+        <div style=${{fontSize:'15px',fontWeight:900,color:trainData.perWeek>=4?C.ok:trainData.perWeek>=3?C.amber:C.red}}>
+          ${trainData.perWeek.toFixed(1)}×/sem</div>
+        <div style=${{fontSize:'9px',color:C.dim}}>meta: 5×/sem</div>
+      </div>
+      <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Gap projeções</div>
+        ${gap!==null?html`<div style=${{fontSize:'15px',fontWeight:900,
+          color:Math.abs(gap)<0.15?C.ok:C.amber}}>
+          ${gap>=0?'+':''}${gap.toFixed(2)} kg/sem</div>
+          <div style=${{fontSize:'9px',color:C.dim}}>${Math.abs(gap)<0.15?'projeções alinhadas':'verificar registros'}</div>`
+        :html`<div style=${{fontSize:'11px',color:C.dim,marginTop:'4px'}}>Dados insuficientes</div>`}
+      </div>
+    </div>
+
+    ${/* Insight */null}
+    <div style=${{background:insight.col+'12',border:'1px solid '+insight.col+'44',borderRadius:'10px',
+      padding:'10px 12px',display:'flex',gap:'8px',alignItems:'flex-start'}}>
+      <${Ic} n="bolt" size=${14} col=${insight.col} style=${{marginTop:'1px',flexShrink:0}}/>
+      <span style=${{fontSize:'11px',color:C.text,lineHeight:'1.5'}}>${insight.txt}</span>
+    </div>
+
+    <div style=${{marginTop:'10px',fontSize:'9px',color:C.dim,lineHeight:'1.6',padding:'0 2px'}}>
+      <strong style=${{color:C.muted}}>Ritmo real</strong> — regressão linear nos seus pesos registrados. 
+      <strong style=${{color:C.muted}}>Ritmo metabólico</strong> — estimativa com base no surplus calórico diário × frequência de treino × proteína. O gap entre as duas revela subregistro de alimentos ou retenção hídrica.
+    </div>
+  </div>`;
+}
+
+/* ── TAB TREINO ── */
+function Treino(){
+  const [open,setOpen]=useState(null);
+  const [editDay,setEditDay]=useState(null);
+  const [exercises,setExercises]=useState(()=>ls.g('exercises')||{});
+  const [progStart,setProgStart]=useState(()=>{
+    let s=ls.g('programStart');
+    if(!s){s=today();ls.s('programStart',s);}
+    return s;
+  });
+  const [progVersion,setProgVersion]=useState(()=>ls.g('programVersion')||1);
+  const [showEvolve,setShowEvolve]=useState(false);
+  const getEx=day=>exercises[day]||WD_DEFAULT.find(d=>d.n===day).ex;
+
+  const saveEx=(dayN,exList)=>{
+    const next=Object.assign({},exercises,{[dayN]:exList});
+    setExercises(next);ls.s('exercises',next);setEditDay(null);
+  };
+  const resetEx=dayN=>{
+    const next=Object.assign({},exercises);delete next[dayN];
+    setExercises(next);ls.s('exercises',next);setEditDay(null);
+  };
+  const restartCount=()=>{const d=today();ls.s('programStart',d);setProgStart(d);};
+  const applyEvolution=newPlan=>{
+    const next={...exercises};
+    newPlan.forEach(d=>{if(d&&d.n&&Array.isArray(d.ex)&&d.ex.length)next[d.n]=d.ex;});
+    setExercises(next);ls.s('exercises',next);
+    const d=today();ls.s('programStart',d);setProgStart(d);
+    const v=progVersion+1;ls.s('programVersion',v);setProgVersion(v);
+    setShowEvolve(false);
+  };
+
+  const wks=weeksBetween(progStart);
+  const thresh=ls.g('evolveWeeks')||6;
+  const dueForUpdate=wks>=thresh;
+
+  return html`<div style=${{padding:'0 14px 20px'}}>
+    <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',
+      background:dueForUpdate?C.amber+'14':C.s1,border:'1px solid '+(dueForUpdate?C.amber+'55':C.border),
+      borderRadius:'11px',padding:'10px 12px',marginBottom:'10px'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:'8px',minWidth:0}}>
+        <${Ic} n=${dueForUpdate?'bell':'clock'} size=${15} col=${dueForUpdate?C.amber:C.muted}/>
+        <div style=${{minWidth:0}}>
+          <div style=${{fontSize:'11px',fontWeight:700,color:dueForUpdate?C.amber:C.text}}>
+            ${dueForUpdate?'Hora de evoluir o treino!':'Neste treino há '+wks+' semana'+(wks!==1?'s':'')}
+          </div>
+          <div style=${{fontSize:'9px',color:C.dim}}>
+            ${dueForUpdate?wks+' semanas no programa v'+progVersion+' — considere trocar estímulos':'Programa v'+progVersion+' · aviso em '+thresh+' semanas'}
+          </div>
+        </div>
+      </div>
+      <button onClick=${restartCount} title="Reiniciar contagem" style=${{background:'none',border:'none',
+        color:C.dim,cursor:'pointer',padding:'4px',flexShrink:0}}>
+        <${Ic} n="reset" size=${14} col=${C.dim}/>
+      </button>
+    </div>
+
+    <button onClick=${()=>setShowEvolve(true)} style=${{width:'100%',display:'flex',alignItems:'center',
+      justifyContent:'center',gap:'7px',padding:'10px',marginBottom:'12px',
+      background:dueForUpdate?C.amber:C.s1,border:'1px solid '+(dueForUpdate?C.amber:C.border),
+      borderRadius:'10px',color:dueForUpdate?'#000':C.text,fontSize:'11px',fontWeight:800,
+      letterSpacing:'.5px',cursor:'pointer'}}>
+      <${Ic} n="bolt" size=${14} col=${dueForUpdate?'#000':C.accent}/>EVOLUIR TREINO
+    </button>
+
+    ${WD_DEFAULT.map(day=>{
+      const o=open===day.n,isEditing=editDay===day.n;
+      const exList=getEx(day.n);
+      const isCustom=!!exercises[day.n];
+      return html`<div key=${day.n} style=${{borderRadius:'12px',background:o?day.dim:C.s1,
+        border:'1px solid '+(o?day.col+'55':C.border),borderLeft:'4px solid '+day.col,
+        overflow:'hidden',marginBottom:'8px',transition:'background .2s'}}>
+        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 14px',cursor:'pointer',userSelect:'none'}}
+          onClick=${()=>{setOpen(o?null:day.n);setEditDay(null);}}>
+          <div style=${{display:'flex',alignItems:'center',gap:'11px'}}>
+            <span style=${{fontSize:'28px',fontWeight:900,color:o?day.col:C.border,lineHeight:1,
+              minWidth:'34px',letterSpacing:'-2px',transition:'color .2s'}}>${pad(day.n)}</span>
+            <div>
+              <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'2.5px',color:TAGC[day.tag],textTransform:'uppercase',display:'block',marginBottom:'2px'}}>${day.tag}</span>
+              <span style=${{fontSize:'12px',fontWeight:700}}>${day.title}</span>
+              ${isCustom&&html`<span style=${{fontSize:'8px',color:day.col,marginLeft:'5px',opacity:.7}}>editado</span>`}
+            </div>
+          </div>
+          <span style=${{color:C.muted,fontSize:'10px',display:'flex',alignItems:'center',gap:'5px'}}>
+            ${exList.length} ex
+            <span style=${{transform:o?'rotate(180deg)':'rotate(0)',transition:'transform .2s',display:'inline-block'}}>▾</span>
+          </span>
+        </div>
+
+        ${o&&!isEditing&&html`<div style=${{padding:'0 14px 12px'}}>
+          <div style=${{height:'1px',background:day.col+'25',marginBottom:'10px'}}/>
+          ${exList.map((ex,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',
+            alignItems:'flex-start',gap:'8px',marginBottom:'7px'}}>
+            <div style=${{display:'flex',gap:'6px',flex:1,alignItems:'flex-start'}}>
+              <span style=${{color:day.col,fontSize:'5px',paddingTop:'5px',flexShrink:0}}>●</span>
+              <div>
+                <span style=${{fontSize:'12px',color:'#CDD5DF',lineHeight:'1.3'}}>${ex.n}</span>
+                ${ex.ss&&html`<span style=${{fontSize:'8px',fontWeight:700,color:day.col,background:day.dim,padding:'1px 4px',borderRadius:'3px',marginLeft:'5px'}}>SS</span>`}
+                ${ex.note&&html`<span style=${{display:'block',fontSize:'9px',color:day.col+'88',marginTop:'1px',fontStyle:'italic'}}>${ex.note}</span>`}
+              </div>
+            </div>
+            <div style=${{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
+              <span style=${{fontSize:'10px',fontWeight:700,color:day.col,background:day.dim,padding:'2px 7px',borderRadius:'5px',whiteSpace:'nowrap'}}>${ex.d}</span>
+              <a href=${'https://www.youtube.com/results?search_query='+encodeURIComponent(ex.n+' exercise')}
+                target="_blank" rel="noopener"
+                onClick=${e=>e.stopPropagation()}
+                style=${{color:C.dim,display:'flex',alignItems:'center'}}>
+                <${Ic} n="link" size=${12} col=${C.dim}/>
+              </a>
+            </div>
+          </div>`)}
+          <div style=${{marginTop:'10px',background:C.bg,borderRadius:'6px',padding:'8px 10px',borderLeft:'2px solid '+day.col+'30',marginBottom:'10px'}}>
+            ${day.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',display:'flex',alignItems:'center',gap:'5px'}}>
+              <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
+          </div>
+          <button onClick=${e=>{e.stopPropagation();setEditDay(day.n);}} style=${{
+            display:'flex',alignItems:'center',gap:'6px',background:'none',
+            border:'1px solid '+C.border,borderRadius:'7px',padding:'6px 10px',
+            color:C.muted,fontSize:'10px',cursor:'pointer',fontWeight:600}}>
+            <${Ic} n="pencil" size=${12} col=${C.muted}/>Editar exercícios
+          </button>
+        </div>`}
+
+        ${o&&isEditing&&html`<${EditExercises} day=${day} exList=${exList} isCustom=${isCustom}
+          onSave=${(list)=>saveEx(day.n,list)} onReset=${()=>resetEx(day.n)} onCancel=${()=>setEditDay(null)}/>`}
+      </div>`;
+    })}
+    ${showEvolve&&html`<${EvolveTreino} current=${WD_DEFAULT.map(d=>({n:d.n,title:d.title,tag:d.tag,ex:getEx(d.n)}))}
+      onApply=${applyEvolution} onClose=${()=>setShowEvolve(false)}/>`}
+  </div>`;}
+
+/* ── EDIT EXERCISES ── */
+function EditExercises({day,exList,isCustom,onSave,onReset,onCancel}){
+  const [list,setList]=useState(()=>exList.map((e,i)=>({...e,_id:i})));
+  const update=(idx,field,val)=>setList(p=>p.map((e,i)=>i===idx?{...e,[field]:val}:e));
+  const remove=idx=>setList(p=>p.filter((_,i)=>i!==idx));
+  const addRow=()=>setList(p=>[...p,{n:'',d:'3×10',note:'',_id:Date.now()}]);
+
+  return html`<div style=${{padding:'0 14px 14px'}} onClick=${e=>e.stopPropagation()}>
+    <div style=${{height:'1px',background:day.col+'25',marginBottom:'10px'}}/>
+    <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px',
+      display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+      <span>Editar exercícios</span>
+      <a href="https://exrx.net" target="_blank" rel="noopener"
+        style=${{color:C.blue,fontSize:'9px',display:'flex',alignItems:'center',gap:'3px',textDecoration:'none'}}>
+        <${Ic} n="link" size=${10} col=${C.blue}/>Referência ExRx
+      </a>
+    </div>
+    ${list.map((ex,i)=>html`<div key=${ex._id} style=${{background:C.bg,borderRadius:'8px',padding:'8px 10px',marginBottom:'6px',border:'1px solid '+C.border}}>
+      <div style=${{display:'flex',gap:'6px',marginBottom:'5px'}}>
+        <input value=${ex.n} onInput=${e=>update(i,'n',e.target.value)} placeholder="Nome do exercício"
+          style=${{flex:1,background:C.s1,border:'1px solid '+C.border,borderRadius:'5px',
+            padding:'6px 8px',color:C.text,fontSize:'11px',outline:'none'}}/>
+        <input value=${ex.d} onInput=${e=>update(i,'d',e.target.value)} placeholder="4×8–10"
+          style=${{width:'72px',background:C.s1,border:'1px solid '+C.border,borderRadius:'5px',
+            padding:'6px 8px',color:day.col,fontSize:'11px',fontWeight:700,outline:'none',textAlign:'center'}}/>
+        <button onClick=${()=>remove(i)} style=${{background:'none',border:'none',color:C.dim,cursor:'pointer',padding:'4px'}}>
+          <${Ic} n="trash" size=${13} col=${C.red+'88'}/>
+        </button>
+      </div>
+      <input value=${ex.note||''} onInput=${e=>update(i,'note',e.target.value)} placeholder="Observação (opcional)"
+        style=${{width:'100%',background:C.s1,border:'1px solid '+C.border+'88',borderRadius:'5px',
+          padding:'5px 8px',color:C.muted,fontSize:'10px',outline:'none',fontStyle:'italic'}}/>
+    </div>`)}
+    <button onClick=${addRow} style=${{display:'flex',alignItems:'center',gap:'6px',
+      background:C.s1,border:'1px dashed '+C.border,borderRadius:'7px',padding:'7px 10px',
+      color:C.muted,fontSize:'10px',cursor:'pointer',width:'100%',marginBottom:'10px'}}>
+      <${Ic} n="plus" size=${12} col=${C.muted}/>Adicionar exercício
+    </button>
+    <div style=${{display:'flex',gap:'6px'}}>
+      ${isCustom&&html`<button onClick=${onReset} style=${{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'5px',
+        background:'none',border:'1px solid '+C.border,borderRadius:'7px',padding:'8px',
+        color:C.muted,fontSize:'10px',cursor:'pointer'}}>
+        <${Ic} n="reset" size=${12} col=${C.muted}/>Restaurar padrão
+      </button>`}
+      <button onClick=${onCancel} style=${{flex:1,background:'none',border:'1px solid '+C.border,
+        borderRadius:'7px',padding:'8px',color:C.muted,fontSize:'10px',cursor:'pointer'}}>Cancelar</button>
+      <button onClick=${()=>onSave(list.filter(e=>e.n.trim()))} style=${{flex:2,background:day.col,border:'none',
+        borderRadius:'7px',padding:'8px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+    </div>
+  </div>`;}
+
+/* ── EVOLVE TREINO (IA) ── */
+function EvolveTreino({current,onApply,onClose}){
+  const [status,setStatus]=useState('idle'); // idle | loading | done | error
+  const [plan,setPlan]=useState(null);
+  const [errMsg,setErrMsg]=useState('');
+  const [checked,setChecked]=useState({});
+  const ak=localStorage.getItem('ak');
+
+  const generate=async()=>{
+    if(!ak){setStatus('error');setErrMsg('Configure a API key da Anthropic nas Configurações.');return;}
+    setStatus('loading');
+    try{
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,
+          system:'Você é um personal trainer especialista em hipertrofia. Você recebe um programa de treino atual em JSON (dias com número, título, tag e lista de exercícios) e deve EVOLUIR o treino para quebrar a adaptação, mantendo a mesma quantidade de dias, os mesmos números de dia e os mesmos grupos musculares/tags de cada dia. Regras: (1) troque cerca de 30–50% dos exercícios por variações que estimulem os mesmos grupos de forma diferente (ex: trocar barra por halteres, pegada, ângulo, incluir técnicas de intensidade como superséries); (2) para os exercícios mantidos, evolua levemente a faixa de repetições ou observação indicando progressão; (3) preserve nomes de exercícios em português do Brasil; (4) responda SOMENTE com um JSON válido, sem texto extra, no formato: [{"n":1,"ex":[{"n":"nome do exercício","d":"4×8–10","note":"opcional, curto","ss":true}]}], um objeto por dia na mesma ordem recebida, apenas com os campos n e ex (note e ss são opcionais).',
+          messages:[{role:'user',content:[{type:'text',text:'Programa atual:\n'+JSON.stringify(current)+'\n\nGere a versão evoluída deste programa, seguindo as regras.'}]}]})});
+      const data=await resp.json();
+      if(data.error)throw new Error(data.error.message||'Erro na API');
+      const txt=data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+      const parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
+      setPlan(parsed);
+      setChecked(Object.fromEntries(parsed.map(d=>[d.n,true])));
+      setStatus('done');
+    }catch(e){setStatus('error');setErrMsg(e.message||'Falha ao gerar evolução');}
+  };
+
+  const apply=()=>{
+    const toApply=plan.filter(d=>checked[d.n]);
+    onApply(toApply);
+  };
+
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',zIndex:100,
+    display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'16px 15px 52px',maxHeight:'92vh',overflowY:'auto'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800,display:'flex',alignItems:'center',gap:'7px'}}>
+          <${Ic} n="bolt" size=${15} col=${C.accent}/>Evoluir Treino</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+      </div>
+
+      ${status==='idle'&&html`<div>
+        <div style=${{fontSize:'11px',color:C.muted,lineHeight:'1.6',marginBottom:'14px'}}>
+          A IA vai analisar seu programa atual e sugerir uma nova versão: mantém a mesma estrutura de dias e grupos musculares,
+          mas troca parte dos exercícios e ajusta repetições para evitar adaptação e continuar progredindo.
+        </div>
+        <button onClick=${generate} style=${{width:'100%',padding:'12px',background:C.accent,border:'none',
+          borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'.5px'}}>
+          GERAR EVOLUÇÃO</button>
+      </div>`}
+
+      ${status==='loading'&&html`<div style=${{textAlign:'center',padding:'30px 0'}}>
+        <${Ic} n="bolt" size=${28} col=${C.accent} style=${{marginBottom:'10px'}}/>
+        <div style=${{fontSize:'12px',color:C.muted}}>Montando a evolução do seu treino...</div>
+      </div>`}
+
+      ${status==='error'&&html`<div>
+        <div style=${{fontSize:'11px',color:C.red,background:C.red+'14',borderRadius:'8px',padding:'10px 12px',marginBottom:'12px'}}>${errMsg}</div>
+        <button onClick=${generate} style=${{width:'100%',padding:'11px',background:C.s1,border:'1px solid '+C.border,
+          borderRadius:'8px',color:C.text,fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Tentar novamente</button>
+      </div>`}
+
+      ${status==='done'&&plan&&html`<div>
+        <div style=${{fontSize:'10px',color:C.muted,marginBottom:'12px',lineHeight:'1.5'}}>
+          Revise dia a dia. Desmarque os dias que você quer manter como estão — só os marcados serão substituídos.
+        </div>
+        ${plan.map(d=>{
+          const dayInfo=WD_DEFAULT.find(w=>w.n===d.n);
+          const oldEx=current.find(c=>c.n===d.n)?.ex||[];
+          const on=!!checked[d.n];
+          return html`<div key=${d.n} style=${{background:C.s1,borderRadius:'10px',padding:'11px',marginBottom:'8px',
+            border:'1px solid '+(on?(dayInfo?.col||C.accent)+'55':C.border),opacity:on?1:0.55}}>
+            <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
+              <span style=${{fontSize:'11px',fontWeight:800}}>Dia ${d.n} — ${dayInfo?.title||''}</span>
+              <label style=${{display:'flex',alignItems:'center',gap:'5px',fontSize:'9px',color:C.muted,cursor:'pointer'}}>
+                <input type="checkbox" checked=${on} onChange=${e=>setChecked(p=>({...p,[d.n]:e.target.checked}))}/>
+                aplicar
+              </label>
+            </div>
+            <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px'}}>
+              <div>
+                <div style=${{fontSize:'8px',color:C.dim,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Antes</div>
+                ${oldEx.map((ex,i)=>html`<div key=${i} style=${{fontSize:'9px',color:C.dim,marginBottom:'3px',lineHeight:'1.3'}}>${ex.n}</div>`)}
+              </div>
+              <div>
+                <div style=${{fontSize:'8px',color:dayInfo?.col||C.accent,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Novo</div>
+                ${(d.ex||[]).map((ex,i)=>html`<div key=${i} style=${{fontSize:'9px',color:'#CDD5DF',marginBottom:'3px',lineHeight:'1.3'}}>
+                  ${ex.n} <span style=${{color:dayInfo?.col||C.accent}}>${ex.d}</span></div>`)}
+              </div>
+            </div>
+          </div>`;
+        })}
+        <div style=${{display:'flex',gap:'8px',marginTop:'6px'}}>
+          <button onClick=${onClose} style=${{flex:1,padding:'11px',background:'none',border:'1px solid '+C.border,
+            borderRadius:'9px',color:C.muted,fontSize:'11px',cursor:'pointer'}}>Cancelar</button>
+          <button onClick=${apply} style=${{flex:2,padding:'11px',background:C.ok,border:'none',
+            borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'.5px'}}>
+            APLICAR EVOLUÇÃO</button>
+        </div>
+      </div>`}
+    </div>
+  </div>`;}
+
+/* ── WORKOUT PICKER ── */
+function WorkoutPicker({onSelect,onClose}){
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:150,
+    display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'18px 16px 52px',width:'100%',maxWidth:'540px'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800}}>Qual treino foi feito?</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+      </div>
+      <div style=${{display:'flex',flexDirection:'column',gap:'7px'}}>
+        ${WD_DEFAULT.map(day=>html`<button key=${day.n} onClick=${()=>onSelect(day.n)}
+          style=${{display:'flex',alignItems:'center',gap:'12px',padding:'11px 14px',
+            background:C.s1,border:'1px solid '+day.col+'55',borderLeft:'4px solid '+day.col,
+            borderRadius:'10px',cursor:'pointer',textAlign:'left',width:'100%'}}>
+          <span style=${{fontSize:'22px',fontWeight:900,color:day.col,minWidth:'30px',letterSpacing:'-1px'}}>D${day.n}</span>
+          <div>
+            <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'2px',color:TAGC[day.tag],textTransform:'uppercase',display:'block',marginBottom:'1px'}}>${day.tag}</span>
+            <span style=${{fontSize:'12px',fontWeight:700,color:C.text}}>${day.title}</span>
+          </div>
+        </button>`)}
+        <button onClick=${()=>onSelect(null)}
+          style=${{padding:'11px 14px',background:C.s1,border:'1px solid '+C.border,
+            borderRadius:'10px',cursor:'pointer',color:C.muted,fontSize:'12px',fontWeight:600}}>
+          Treino livre / sem categoria
+        </button>
+      </div>
+    </div>
+  </div>`;}
+
+/* ── TAB CHECKIN ── */
+function Checkin(){
+  const [ci,setCi]=useState({});
+  const [view,setView]=useState({y:new Date().getFullYear(),m:new Date().getMonth()});
+  const [burst,setBurst]=useState(false);
+  const [pickDay,setPickDay]=useState(null);
+  const now=new Date(),tK=mkey(now.getFullYear(),now.getMonth()),tD=now.getDate();
+
+  const getCur=k=>ci[k]||{days:[],workouts:{}};
+
+  useEffect(()=>{
+    const d={};const n=new Date();
+    for(let i=0;i<6;i++){const x=new Date(n.getFullYear(),n.getMonth()-i,1);
+      const k=mkey(x.getFullYear(),x.getMonth());const v=ls.g('ci:'+k);
+      d[k]=v?{days:v.days||[],workouts:v.workouts||{}}:{days:[],workouts:{}};}
+    setCi(d);
+  },[]);
+  useEffect(()=>{const k=mkey(view.y,view.m);
+    if(ci[k]===undefined){const v=ls.g('ci:'+k);
+      setCi(p=>({...p,[k]:v?{days:v.days||[],workouts:v.workouts||{}}:{days:[],workouts:{}}}));}
+  },[view.y,view.m]);
+
+  const confirmCheckin=(k,d,wkDay)=>{
+    const cur=getCur(k);
+    const days=[...new Set([...cur.days,d])].sort((a,b)=>a-b);
+    const workouts={...cur.workouts,[d]:wkDay};
+    const next={...ci,[k]:{days,workouts}};
+    setCi(next);ls.s('ci:'+k,{days,workouts});
+    if(k===tK&&d===tD){setBurst(true);setTimeout(()=>setBurst(false),2500);}
+    setPickDay(null);
+  };
+  const removeDay=(k,d)=>{
+    const cur=getCur(k),days=cur.days.filter(x=>x!==d),workouts={...cur.workouts};
+    delete workouts[d];
+    setCi(p=>({...p,[k]:{days,workouts}}));ls.s('ci:'+k,{days,workouts});
+  };
+  const toggleDay=(k,d,isFuture)=>{
+    if(isFuture)return;
+    const cur=getCur(k);
+    if(cur.days.indexOf(d)>=0){removeDay(k,d);}else{setPickDay({k,d});}
+  };
+
+  const checked=getCur(tK).days.indexOf(tD)>=0;
+  const streak=useMemo(()=>{let s=0,d=new Date();if(!checked)d.setDate(d.getDate()-1);
+    for(let i=0;i<365;i++){const k=mkey(d.getFullYear(),d.getMonth());
+      if(getCur(k).days.indexOf(d.getDate())>=0){s++;d.setDate(d.getDate()-1);}else break;}return s;},[ci,checked]);
+
+  const vmK=mkey(view.y,view.m),pmD=new Date(view.y,view.m-1,1),pmK=mkey(pmD.getFullYear(),pmD.getMonth());
+  const vmCur=getCur(vmK),vmCt=vmCur.days.length,pmCt=getCur(pmK).days.length,diff=vmCt-pmCt;
+  const diffP=pmCt>0?Math.round((diff/pmCt)*100):null;
+  const isNow=view.y===now.getFullYear()&&view.m===now.getMonth();
+  const dim=new Date(view.y,view.m+1,0).getDate();
+  const fwd=(()=>{const d=new Date(view.y,view.m,1).getDay();return d===0?6:d-1;})();
+  const vmD=vmCur.days,vmW=vmCur.workouts||{};
+
+  return html`<div style=${{padding:'0 14px 20px'}}>
+    <div style=${{background:C.s1,borderRadius:'14px',padding:'18px',marginBottom:'10px',
+      border:'1px solid '+(checked?C.accent+'44':C.border),textAlign:'center'}}>
+      ${burst?html`<div style=${{padding:'8px 0'}}>
+        <${Ic} n="bolt" size=${44} col=${C.accent} style=${{marginBottom:'8px'}}/>
+        <div style=${{fontSize:'14px',fontWeight:900,color:C.accent}}>Check-in feito!</div>
+      </div>`
+      :checked?html`<div style=${{padding:'6px 0'}}>
+        <${Ic} n="check" size=${42} col=${C.ok} style=${{marginBottom:'8px'}}/>
+        <div style=${{fontSize:'12px',fontWeight:700,color:C.ok}}>Academia registrada hoje</div>
+      </div>`
+      :html`<div>
+        <div style=${{fontSize:'10px',color:C.muted,marginBottom:'12px',letterSpacing:'1px',textTransform:'uppercase'}}>
+          ${now.toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'})}</div>
+        <button onClick=${()=>toggleDay(tK,tD,false)} style=${{background:C.accent,border:'none',borderRadius:'10px',
+          padding:'11px 28px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'1px',
+          boxShadow:'0 0 20px '+C.accent+'44',display:'inline-flex',alignItems:'center',gap:'8px'}}>
+          <${Ic} n="dumbbell" size=${16} col="#fff"/>CHECK-IN HOJE</button>
+      </div>`}
+      ${streak>0&&html`<div style=${{marginTop:'14px',display:'flex',justifyContent:'center',gap:'22px'}}>
+        <div style=${{textAlign:'center'}}>
+          <div style=${{fontSize:'20px',fontWeight:900,color:C.accent}}>${streak}</div>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px'}}>DIA${streak>1?'S':''} SEGUIDO${streak>1?'S':''}</div>
+        </div>
+        <div style=${{width:'1px',background:C.border}}/>
+        <div style=${{textAlign:'center'}}>
+          <div style=${{fontSize:'20px',fontWeight:900}}>${vmCt}</div>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px'}}>ESTE MÊS</div>
+        </div>
+      </div>`}
+    </div>
+
+    <div style=${{background:C.s1,borderRadius:'14px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
+      <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'12px'}}>
+        <button onClick=${()=>setView(v=>{const d=new Date(v.y,v.m-1,1);return{y:d.getFullYear(),m:d.getMonth()};})}
+          style=${{background:'none',border:'1px solid '+C.border,borderRadius:'7px',color:C.muted,
+            padding:'5px 11px',cursor:'pointer',fontSize:'15px',lineHeight:1}}>‹</button>
+        <div style=${{textAlign:'center'}}>
+          <div style=${{fontSize:'12px',fontWeight:700,textTransform:'capitalize'}}>${ptMonth(view.y,view.m)}</div>
+          <div style=${{fontSize:'10px',marginTop:'2px',color:diff>0?C.ok:diff<0?C.red:C.muted}}>
+            ${vmCt} visita${vmCt!==1?'s':''}${diffP!==null?' ('+(diff>0?'+':'')+diff+' vs anterior)':''}</div>
+        </div>
+        <button onClick=${()=>{if(!isNow)setView(v=>{const d=new Date(v.y,v.m+1,1);return{y:d.getFullYear(),m:d.getMonth()};});}}
+          style=${{background:'none',border:'1px solid '+C.border,borderRadius:'7px',
+            color:isNow?C.dim:C.muted,padding:'5px 11px',cursor:isNow?'default':'pointer',fontSize:'15px',lineHeight:1}}>›</button>
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(7,1fr)',marginBottom:'4px'}}>
+        ${'STQQSSD'.split('').map((d,i)=>html`<div key=${i} style=${{textAlign:'center',fontSize:'8px',color:C.dim,fontWeight:700,padding:'2px 0'}}>${d}</div>`)}
+      </div>
+      <div style=${{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:'3px'}}>
+        ${Array.from({length:fwd}).map((_,i)=>html`<div key=${'e'+i}/>`)}
+        ${Array.from({length:dim}).map((_,i)=>{
+          const d=i+1,ck=vmD.indexOf(d)>=0,wk=vmW[d];
+          const isT=isNow&&d===tD,isFu=isNow&&d>tD;
+          return html`<div key=${d} onClick=${()=>toggleDay(vmK,d,isFu)}
+            style=${{aspectRatio:'1',display:'flex',flexDirection:'column',alignItems:'center',
+              justifyContent:'center',borderRadius:'50%',fontSize:'10px',fontWeight:ck||isT?700:400,
+              cursor:isFu?'default':'pointer',
+              background:ck?WD_DEFAULT.find(w=>w.n===wk)?.col||C.accent:isT?C.accent+'22':'transparent',
+              color:ck?'#fff':isT?C.accent:isFu?C.dim:C.text,
+              border:isT&&!ck?'1px solid '+C.accent:'none',
+              transition:'background .15s',position:'relative'}}>
+            ${d}
+            ${ck&&wk&&html`<span style=${{fontSize:'7px',fontWeight:900,lineHeight:1,opacity:.9}}>D${wk}</span>`}
+          </div>`;
+        })}
+      </div>
+      <div style=${{marginTop:'8px',fontSize:'9px',color:C.dim,textAlign:'center'}}>Toque em qualquer dia para registrar ou remover</div>
+    </div>
+
+    ${pmCt>0&&html`<div style=${{background:C.s1,borderRadius:'14px',padding:'13px',border:'1px solid '+C.border,display:'flex'}}>
+      ${[['Mês anterior',pmCt,C.muted],['Este mês',vmCt,C.accent],
+        ['Variação',diff===0?'=':(diff>0?'+':'')+diff,diff>0?C.ok:diff<0?C.red:C.muted]].map((s,i)=>
+        html`<div key=${i} style=${{flex:1,textAlign:'center',borderRight:i<2?'1px solid '+C.border:'none',padding:'0 6px'}}>
+          <div style=${{fontSize:'19px',fontWeight:900,color:s[2]}}>${s[1]}</div>
+          ${i===2&&diffP!==null&&html`<div style=${{fontSize:'9px',color:s[2],fontWeight:700}}>${(diff>0?'+':'')+diffP}%</div>`}
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginTop:'2px'}}>${s[0]}</div>
+        </div>`)}
+    </div>`}
+
+    ${pickDay&&html`<${WorkoutPicker}
+      onSelect=${wkDay=>confirmCheckin(pickDay.k,pickDay.d,wkDay)}
+      onClose=${()=>setPickDay(null)}/>`}
+  </div>`;}
+
+/* ── TAB PESO ── */
+function Peso(){
+  const [ptab,setPtab]=useState('registro');
+  const [ws,setWs]=useState([]);const [inp,setInp]=useState('');const [remind,setRemind]=useState(false);
+  useEffect(()=>{const d=ls.g('wlog')||[];setWs(d);
+    if(!d.length){setRemind(true);return;}
+    const last=new Date(d[d.length-1].date+'T12:00:00');setRemind((new Date()-last)/86400000>=7);},[]);
+  const add=()=>{const kg=parseFloat(inp.replace(',','.'));if(!kg||kg<30||kg>300)return;
+    const td=today(),up=[...ws.filter(w=>w.date!==td),{date:td,kg}].sort((a,b)=>a.date<b.date?-1:1);
+    setWs(up);setInp('');setRemind(false);ls.s('wlog',up);};
+  const del=d=>{const up=ws.filter(w=>w.date!==d);setWs(up);ls.s('wlog',up);};
+  const last=ws.length?ws[ws.length-1].kg:null,first=ws.length?ws[0].kg:null;
+  const delta=last&&first?f2(last-first):null;
+
+  return html`<div style=${{padding:'0 14px 20px'}}>
+    <div style=${{display:'flex',gap:'4px',background:C.s1,borderRadius:'9px',padding:'3px',marginBottom:'10px'}}>
+      ${[['registro','Registros'],['projecao','Projeção']].map(t=>
+        html`<button key=${t[0]} onClick=${()=>setPtab(t[0])} style=${{flex:1,padding:'7px 0',border:'none',borderRadius:'6px',
+          cursor:'pointer',fontSize:'11px',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',
+          background:ptab===t[0]?C.accent:'transparent',color:ptab===t[0]?'#fff':C.muted}}>${t[1]}</button>`)}
+    </div>
+
+    ${ptab==='projecao'&&html`<${Projecao} weights=${ws}/>`}
+
+    ${ptab==='registro'&&html`<div>
+    ${remind&&html`<div style=${{background:C.blue+'14',border:'1px solid '+C.blue+'44',borderRadius:'11px',
+      padding:'10px 12px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'9px'}}>
+      <${Ic} n="bell" size=${20} col=${C.blue}/>
+      <div><div style=${{fontSize:'11px',fontWeight:700,color:C.blue}}>Hora de pesar!</div>
+        <div style=${{fontSize:'10px',color:C.muted}}>${ws.length===0?'Registre seu primeiro peso':'Mais de 7 dias sem registro'}</div></div>
+    </div>`}
+    <div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'8px'}}>Registrar peso</div>
+      <div style=${{display:'flex',gap:'7px'}}>
+        <input value=${inp} onInput=${e=>setInp(e.target.value)} onKeyDown=${e=>e.key==='Enter'&&add()}
+          type="number" step="0.1" placeholder="Ex: 71.5"
+          style=${{flex:1,padding:'9px 11px',background:C.bg,border:'1px solid '+C.border,borderRadius:'8px',
+            color:C.text,fontSize:'14px',fontWeight:700,outline:'none'}}/>
+        <span style=${{display:'flex',alignItems:'center',color:C.muted,fontSize:'11px'}}>kg</span>
+        <button onClick=${add} style=${{padding:'9px 14px',background:C.accent,border:'none',borderRadius:'8px',
+          color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+      </div>
+    </div>
+    ${ws.length>0&&html`<div>
+      <div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
+        <div style=${{display:'flex',marginBottom:'13px'}}>
+          ${[['Atual',last?last.toFixed(1)+'kg':'-',C.accent],['Início',first?first.toFixed(1)+'kg':'-',C.muted],
+            ['Variação',delta===null?'-':(delta>0?'+':'')+delta.toFixed(2)+'kg',
+              delta===null?C.muted:delta<0?C.ok:delta>0?C.red:C.muted]].map((s,i)=>
+            html`<div key=${i} style=${{flex:1,textAlign:'center',borderRight:i<2?'1px solid '+C.border:'none',padding:'0 6px'}}>
+              <div style=${{fontSize:'16px',fontWeight:900,color:s[2]}}>${s[1]}</div>
+              <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginTop:'2px'}}>${s[0]}</div>
+            </div>`)}
+        </div>
+        ${ws.length>=2&&html`<${WChart} data=${ws.slice(-10)}/>`}
+      </div>
+      <div style=${{background:C.s1,borderRadius:'13px',padding:'13px',border:'1px solid '+C.border}}>
+        <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'9px'}}>Histórico</div>
+        ${ws.slice().reverse().slice(0,12).map((w,i,arr)=>{const prev=arr[i+1],d=prev?f2(w.kg-prev.kg):null;
+          return html`<div key=${w.date} style=${{display:'flex',justifyContent:'space-between',alignItems:'center',
+            padding:'7px 0',borderBottom:i<Math.min(arr.length,12)-1?'1px solid '+C.border:'none'}}>
+            <div><span style=${{fontSize:'11px',fontWeight:600}}>${ptDate(w.date)}</span>
+              ${d!==null&&html`<span style=${{fontSize:'10px',marginLeft:'6px',color:d<0?C.ok:d>0?C.red:C.muted}}>${d>0?'+':''}${d.toFixed(2)}kg</span>`}
+            </div>
+            <div style=${{display:'flex',alignItems:'center',gap:'8px'}}>
+              <span style=${{fontSize:'13px',fontWeight:900,color:i===0?C.accent:C.text}}>${w.kg.toFixed(1)}kg</span>
+              <button onClick=${()=>del(w.date)} style=${{background:'none',border:'none',color:C.dim,cursor:'pointer'}}><${Ic} n="trash" size=${13} col=${C.dim}/></button>
+            </div>
+          </div>`;
+        })}
+      </div>
+    </div>`}
+    </div>`}
+  </div>`;}
+
+/* ── TAB MACROS ── */
+function Macros(){
+  const [stab,setStab]=useState('hoje');
+  const [meals,setMeals]=useState([]);
+  const [hist,setHist]=useState([]);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editMeal,setEditMeal]=useState(null);
+  const [expanded,setExpanded]=useState(null);
+  const [expMeals,setExpMeals]=useState([]);
+  const [histEditMeal,setHistEditMeal]=useState(null);
+  const [period,setPeriod]=useState('diario');
+  const k=tkey(0);
+
+  // Sábado/domingo são dias off: se não houver refeições registradas, pré-preenche com a
+  // média dos últimos 5 dias com registro real (ignora dias já estimados, evita "arrastar" a média).
+  // Roda também retroativamente para os últimos 7 dias — cobre finais de semana esquecidos.
+  const avgOfLastRealDays=(fromOffset,n)=>{
+    const days=[];let i=fromOffset;
+    while(days.length<n&&i<fromOffset+30){
+      const dd=ls.g(tkey(i));
+      if(dd&&dd.meals&&dd.meals.length>0&&!dd.autoFillDone)days.push(sumM(dd.meals));
+      i++;
+    }
+    if(!days.length)return null;
+    const t=days.reduce((a,x)=>({k:a.k+x.k,p:a.p+x.p,c:a.c+x.c,f:a.f+x.f}),{k:0,p:0,c:0,f:0});
+    return{k:t.k/days.length,p:t.p/days.length,c:t.c/days.length,f:t.f/days.length};
+  };
+  const backfillWeekends=()=>{
+    for(let i=0;i<=6;i++){
+      const dk=tkey(i),d=ls.g(dk)||{},curMeals=d.meals||[];
+      if(!isWeekend(offsetDate(i))||curMeals.length>0||d.autoFillDone)continue;
+      const avg=avgOfLastRealDays(i+1,5);
+      if(avg){
+        const estMeal={id:Date.now()+i,name:'Dia de descanso (estimado · média 5 dias)',
+          k:Math.round(avg.k),p:f2(avg.p),c:f2(avg.c),f:f2(avg.f),estimated:true};
+        ls.s(dk,{meals:[estMeal],autoFillDone:true});
+      } else {
+        ls.s(dk,{meals:curMeals,autoFillDone:true});
+      }
+    }
+  };
+
+  useEffect(()=>{
+    backfillWeekends();
+    const d=ls.g(k);setMeals(d?d.meals||[]:[]);
+    setHist(Array.from({length:6},(_,i)=>{const dk=tkey(i+1),dd=ls.g(dk),m=dd?dd.meals||[]:[];
+      return Object.assign({key:dk,count:m.length},sumM(m));}));
+  },[]);
+
+  const save=up=>{const cur=ls.g(k)||{};setMeals(up);ls.s(k,{meals:up,autoFillDone:cur.autoFillDone||false});};
+  const totals=sumM(meals);
+  const goals=ls.g('goals')||GOALS;
+
+  // Repetir alimentação de ontem: copia todas as refeições do dia anterior para hoje
+  const yData=ls.g(tkey(1));
+  const yMeals=yData&&yData.meals?yData.meals:[];
+  const repeatYesterday=()=>{
+    if(!yMeals.length)return;
+    if(meals.length>0&&!confirm('Isso vai adicionar '+yMeals.length+' refeição'+(yMeals.length!==1?'ões':'')+' de ontem às já registradas hoje. Continuar?'))return;
+    const copied=yMeals.map((m,i)=>({...m,id:Date.now()+i}));
+    save([...meals,...copied]);
+  };
+
+  // Edição retroativa: expande um dia do histórico para ver/editar/adicionar refeições esquecidas
+  const toggleDay=dk=>{
+    if(expanded===dk){setExpanded(null);return;}
+    setExpanded(dk);
+    const d=ls.g(dk);setExpMeals(d?d.meals||[]:[]);
+  };
+  const saveExp=up=>{
+    const cur=ls.g(expanded)||{};
+    setExpMeals(up);ls.s(expanded,{meals:up,autoFillDone:cur.autoFillDone||false});
+    setHist(h=>h.map(d=>d.key===expanded?Object.assign({key:d.key,count:up.length},sumM(up)):d));
+  };
+
+  // Semanal: blocos rolantes de 7 dias (últimas 6 semanas), média apenas dos dias com registro
+  const weeklyData=(()=>{
+    const weeks=[];
+    for(let w=0;w<6;w++){
+      const startOffset=1+w*7,endOffset=startOffset+6;
+      let totalK=0,totalP=0,totalC=0,totalF=0,daysLogged=0;
+      for(let i=startOffset;i<=endOffset;i++){
+        const dd=ls.g(tkey(i));
+        if(dd&&dd.meals&&dd.meals.length>0){const s=sumM(dd.meals);totalK+=s.k;totalP+=s.p;totalC+=s.c;totalF+=s.f;daysLogged++;}
+      }
+      const dOld=new Date(offsetDate(endOffset)+'T12:00:00'),dNew=new Date(offsetDate(startOffset)+'T12:00:00');
+      const label=dOld.getDate()+' a '+dNew.getDate()+' de '+MO_ABBR[dNew.getMonth()]+'.';
+      weeks.push({label,daysLogged,avgK:daysLogged?totalK/daysLogged:0,avgP:daysLogged?totalP/daysLogged:0,
+        avgC:daysLogged?totalC/daysLogged:0,avgF:daysLogged?totalF/daysLogged:0});
+    }
+    return weeks;
+  })();
+
+  // Mensal: agregados por mês-calendário (últimos 6 meses)
+  const monthlyData=(()=>{
+    const arr=[],now=new Date();
+    for(let m=0;m<6;m++){
+      const d=new Date(now.getFullYear(),now.getMonth()-m,1),y=d.getFullYear(),mo=d.getMonth();
+      const daysInMonth=new Date(y,mo+1,0).getDate();
+      let totalK=0,totalP=0,totalC=0,totalF=0,daysLogged=0;
+      for(let day=1;day<=daysInMonth;day++){
+        const dateStr=y+'-'+pad(mo+1)+'-'+pad(day);
+        if(new Date(dateStr+'T00:00:00')>now)continue;
+        const dd=ls.g('tk:'+dateStr);
+        if(dd&&dd.meals&&dd.meals.length>0){const s=sumM(dd.meals);totalK+=s.k;totalP+=s.p;totalC+=s.c;totalF+=s.f;daysLogged++;}
+      }
+      arr.push({y,mo,daysInMonth,daysLogged,avgK:daysLogged?totalK/daysLogged:0,avgP:daysLogged?totalP/daysLogged:0,
+        avgC:daysLogged?totalC/daysLogged:0,avgF:daysLogged?totalF/daysLogged:0});
+    }
+    return arr;
+  })();
+
+  return html`<div style=${{padding:'0 14px 20px'}}>
+    <div style=${{display:'flex',gap:'4px',background:C.s1,borderRadius:'9px',padding:'3px',marginBottom:'10px'}}>
+      ${[['hoje','Hoje'],['historico','Histórico']].map(t=>
+        html`<button key=${t[0]} onClick=${()=>setStab(t[0])} style=${{flex:1,padding:'7px 0',border:'none',borderRadius:'6px',
+          cursor:'pointer',fontSize:'11px',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',
+          background:stab===t[0]?C.accent:'transparent',color:stab===t[0]?'#fff':C.muted}}>${t[1]}</button>`)}
+    </div>
+
+    ${stab==='hoje'&&html`<div>
+      <div style=${{background:C.s1,borderRadius:'13px',padding:'14px',marginBottom:'10px',border:'1px solid '+C.border}}>
+        <div style=${{display:'flex',alignItems:'center',gap:'12px'}}>
+          <${ArcGauge} val=${totals.k} goal=${goals.kcal}/>
+          <div style=${{flex:1}}>
+            <${Bar} label="Proteína" val=${totals.p} goal=${goals.protein} unit="g" color=${C.blue}/>
+            <${Bar} label="Carboidratos" val=${totals.c} goal=${goals.carbs} unit="g" color=${C.purple}/>
+            <${Bar} label="Gordura" val=${totals.f} goal=${goals.fat} unit="g" color=${C.amber}/>
+          </div>
+        </div>
+      </div>
+      ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
+        background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
+        fontWeight:700,cursor:'pointer',marginBottom:'9px',display:'flex',alignItems:'center',
+        justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
+        <${Ic} n="reset" size=${13} col=${C.muted}/>REPETIR REFEIÇÕES DE ONTEM (${yMeals.length})
+      </button>`}
+      ${meals.map(m=>html`<div key=${m.id} style=${{background:C.s1,borderRadius:'11px',padding:'10px 12px',
+        marginBottom:'7px',border:'1px '+(m.estimated?'dashed '+C.amber+'66':'solid '+C.border),
+        display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'7px'}}>
+        <div style=${{flex:1,minWidth:0}}>
+          <div style=${{fontSize:'12px',fontWeight:700,marginBottom:'3px',display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
+            <span>${m.name}</span>
+            ${m.estimated&&html`<span style=${{fontSize:'7px',fontWeight:700,color:C.amber,background:C.amber+'18',
+              padding:'1px 5px',borderRadius:'4px',letterSpacing:'.5px'}}>ESTIMADO</span>`}
+          </div>
+          <div style=${{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+            <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${m.k} kcal</span>
+            <span style=${{fontSize:'10px',color:C.blue}}>P ${m.p.toFixed(2)}g</span>
+            <span style=${{fontSize:'10px',color:C.purple}}>C ${m.c.toFixed(2)}g</span>
+            <span style=${{fontSize:'10px',color:C.amber}}>G ${m.f.toFixed(2)}g</span>
+          </div>
+        </div>
+        <div style=${{display:'flex',gap:'6px',alignItems:'center',flexShrink:0}}>
+          <button onClick=${()=>setEditMeal({...m})} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+            <${Ic} n="pencil" size=${14} col=${C.muted}/>
+          </button>
+          <button onClick=${()=>save(meals.filter(x=>x.id!==m.id))} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+            <${Ic} n="trash" size=${14} col=${C.dim}/>
+          </button>
+        </div>
+      </div>`)}
+      ${meals.length===0&&html`<div style=${{textAlign:'center',padding:'32px 0'}}>
+        <${Ic} n="utensils" size=${38} col=${C.dim} style=${{marginBottom:'10px'}}/>
+        <div style=${{fontSize:'11px',color:C.muted}}>Nenhuma refeição registrada hoje</div>
+      </div>`}
+      <button onClick=${()=>setShowAdd(true)} style=${{width:'100%',padding:'11px',background:C.accent+'14',
+        border:'1px dashed '+C.accent+'55',borderRadius:'9px',color:C.accent,fontSize:'11px',
+        fontWeight:700,cursor:'pointer',marginTop:'3px',display:'flex',alignItems:'center',
+        justifyContent:'center',gap:'7px'}}>
+        <${Ic} n="plus" size=${14} col=${C.accent}/>ADICIONAR REFEIÇÃO
+      </button>
+    </div>`}
+
+    ${stab==='historico'&&html`<div>
+      <div style=${{display:'flex',gap:'20px',borderBottom:'1px solid '+C.border,marginBottom:'12px'}}>
+        ${[['diario','Diário'],['semanal','Semanal'],['mensal','Mensal']].map(t=>
+          html`<button key=${t[0]} onClick=${()=>setPeriod(t[0])} style=${{background:'none',border:'none',
+            padding:'0 0 9px',cursor:'pointer',fontSize:'12px',fontWeight:700,
+            color:period===t[0]?C.text:C.muted,borderBottom:'2px solid '+(period===t[0]?C.accent:'transparent'),
+            marginBottom:'-1px'}}>${t[1]}</button>`)}
+      </div>
+
+      ${period==='diario'&&html`<div>
+        ${hist.map(day=>{
+          const isYesterday=day.key===tkey(1);
+          const dateStr=day.key.replace('tk:','');
+          const pct=goals.kcal>0?(day.k/goals.kcal)*100:0;
+          const hits=day.count>0?macroHits(day,goals):0;
+          const dotCol=day.count===0?C.dim:hits<=1?C.red:hits<=3?C.amber:C.ok;
+          return html`<div key=${day.key} style=${{background:C.s1,borderRadius:'13px',padding:'12px 14px',
+            marginBottom:'8px',border:'1px solid '+C.border,cursor:'pointer'}} onClick=${()=>toggleDay(day.key)}>
+            <div style=${{display:'flex',alignItems:'center',gap:'12px'}}>
+              <${DayRing} pct=${pct} empty=${day.count===0}/>
+              <div style=${{flex:1,minWidth:0}}>
+                <div style=${{fontSize:'13px',fontWeight:700}}>${ptDateShort(dateStr)}
+                  ${isYesterday?html` <span style=${{color:C.muted,fontWeight:400}}>· ontem</span>`:''}</div>
+                <div style=${{fontSize:'11px',color:C.muted,marginTop:'1px'}}>
+                  ${day.count>0?Math.round(day.k)+' kcal · '+day.count+' refeição'+(day.count!==1?'ões':''):'Sem registros'}
+                </div>
+              </div>
+              <div style=${{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
+                <span style=${{width:'7px',height:'7px',borderRadius:'50%',background:dotCol,display:'inline-block'}}/>
+                <span style=${{fontSize:'12px',fontWeight:700,color:dotCol}}>${day.count>0?hits+'/4':'–'}</span>
+                <span style=${{fontSize:'9px',color:C.dim,transform:expanded===day.key?'rotate(180deg)':'none',
+                  transition:'transform .2s',display:'inline-block'}}>▾</span>
+              </div>
+            </div>
+            ${expanded===day.key&&html`<div style=${{marginTop:'10px',paddingTop:'10px',borderTop:'1px solid '+C.border}}
+              onClick=${e=>e.stopPropagation()}>
+              ${expMeals.map((m,mi)=>html`<div key=${m.id} style=${{padding:'7px 0',
+                borderTop:mi>0?'1px solid '+C.border+'88':'none',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'7px'}}>
+                <div style=${{flex:1,minWidth:0}}>
+                  <div style=${{fontSize:'12px',fontWeight:700,marginBottom:'3px',display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
+                    <span>${m.name}</span>
+                    ${m.estimated&&html`<span style=${{fontSize:'7px',fontWeight:700,color:C.amber,background:C.amber+'18',
+                      padding:'1px 5px',borderRadius:'4px',letterSpacing:'.5px'}}>ESTIMADO</span>`}
+                  </div>
+                  <div style=${{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                    <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${m.k} kcal</span>
+                    <span style=${{fontSize:'10px',color:C.blue}}>P ${m.p.toFixed(2)}g</span>
+                    <span style=${{fontSize:'10px',color:C.purple}}>C ${m.c.toFixed(2)}g</span>
+                    <span style=${{fontSize:'10px',color:C.amber}}>G ${m.f.toFixed(2)}g</span>
+                  </div>
+                </div>
+                <div style=${{display:'flex',gap:'6px',alignItems:'center',flexShrink:0}}>
+                  <button onClick=${()=>setHistEditMeal({...m})} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+                    <${Ic} n="pencil" size=${14} col=${C.muted}/>
+                  </button>
+                  <button onClick=${()=>saveExp(expMeals.filter(x=>x.id!==m.id))} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+                    <${Ic} n="trash" size=${14} col=${C.dim}/>
+                  </button>
+                </div>
+              </div>`)}
+              ${expMeals.length===0&&html`<div style=${{textAlign:'center',padding:'12px 0',fontSize:'10px',color:C.muted}}>
+                Nenhuma refeição registrada neste dia</div>`}
+            </div>`}
+          </div>`;
+        })}
+      </div>`}
+
+      ${period==='semanal'&&html`<div>
+        ${weeklyData.map((w,wi)=>{
+          const pct=goals.kcal>0&&w.daysLogged>0?(w.avgK/goals.kcal)*100:0;
+          return html`<div key=${wi} style=${{background:C.s1,borderRadius:'13px',padding:'12px 14px',
+            marginBottom:'8px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'12px'}}>
+            <${DayRing} pct=${pct} empty=${w.daysLogged===0}/>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'13px',fontWeight:700}}>${w.label}</div>
+              <div style=${{fontSize:'11px',color:C.muted,marginTop:'1px'}}>
+                ${w.daysLogged>0?'média '+Math.round(w.avgK)+' kcal · P'+w.avgP.toFixed(0)+'g C'+w.avgC.toFixed(0)+'g G'+w.avgF.toFixed(0)+'g':'Sem registros'}
+              </div>
+            </div>
+            <div style=${{fontSize:'11px',fontWeight:700,flexShrink:0,
+              color:w.daysLogged>=5?C.ok:w.daysLogged>=3?C.amber:C.muted}}>${w.daysLogged}/7 dias</div>
+          </div>`;
+        })}
+      </div>`}
+
+      ${period==='mensal'&&html`<div>
+        ${monthlyData.map((m,mi)=>{
+          const pct=goals.kcal>0&&m.daysLogged>0?(m.avgK/goals.kcal)*100:0;
+          return html`<div key=${mi} style=${{background:C.s1,borderRadius:'13px',padding:'12px 14px',
+            marginBottom:'8px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'12px'}}>
+            <${DayRing} pct=${pct} empty=${m.daysLogged===0}/>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'13px',fontWeight:700,textTransform:'capitalize'}}>${ptMonth(m.y,m.mo)}</div>
+              <div style=${{fontSize:'11px',color:C.muted,marginTop:'1px'}}>
+                ${m.daysLogged>0?'média '+Math.round(m.avgK)+' kcal · P'+m.avgP.toFixed(0)+'g C'+m.avgC.toFixed(0)+'g G'+m.avgF.toFixed(0)+'g':'Sem registros'}
+              </div>
+            </div>
+            <div style=${{fontSize:'11px',fontWeight:700,flexShrink:0,
+              color:m.daysLogged>=m.daysInMonth*0.7?C.ok:m.daysLogged>=m.daysInMonth*0.4?C.amber:C.muted}}>
+              ${m.daysLogged}/${m.daysInMonth} dias</div>
+          </div>`;
+        })}
+      </div>`}
+    </div>`}
+
+    ${showAdd&&html`<${AddMeal} onSave=${m=>{save([...meals,m]);setShowAdd(false);}} onClose=${()=>setShowAdd(false)}/>`}
+    ${editMeal&&html`<${EditMealModal} meal=${editMeal}
+      onSave=${updated=>{save(meals.map(m=>m.id===updated.id?updated:m));setEditMeal(null);}}
+      onClose=${()=>setEditMeal(null)}/>`}
+    ${histEditMeal&&html`<${EditMealModal} meal=${histEditMeal}
+      onSave=${updated=>{saveExp(expMeals.map(m=>m.id===updated.id?updated:m));setHistEditMeal(null);}}
+      onClose=${()=>setHistEditMeal(null)}/>`}
+  </div>`;}
+
+/* ── EDIT MEAL MODAL ── */
+const normalizeMealItems=meal=>{
+  if(Array.isArray(meal.items)&&meal.items.length&&typeof meal.items[0]==='object'&&meal.items[0]!==null&&'k' in meal.items[0]){
+    return meal.items.map((it,i)=>({...it,id:it.id||('it_'+i)}));
+  }
+  return [{id:'legacy_0',food:meal.name||'Item',qty:null,unit:null,k:meal.k||0,p:meal.p||0,c:meal.c||0,f:meal.f||0,_legacy:true}];
+};
+
+function EditMealModal({meal,onSave,onClose}){
+  const [name,setName]=useState(meal.name);
+  const [k,setK]=useState(meal.k);
+  const [p,setP]=useState(meal.p);
+  const [c,setC]=useState(meal.c);
+  const [f,setF]=useState(meal.f);
+  const [detailed,setDetailed]=useState(false);
+  const [itemsList,setItemsList]=useState(()=>normalizeMealItems(meal));
+
+  const [srch,setSrch]=useState('');
+  const [sel,setSel]=useState(null);
+  const [qty,setQty]=useState('');
+  const [unit,setUnit]=useState('g');
+  const [results,setResults]=useState({taco:[],off:[]});
+  const [loading,setLoading]=useState(false);
+  const [showSugg,setShowSugg]=useState(false);
+  const timer=useRef();
+
+  const onSrch=v=>{
+    setSrch(v);setSel(null);setShowSugg(true);
+    clearTimeout(timer.current);
+    const localR=searchLocal(v);
+    setResults(p2=>({...p2,taco:localR}));
+    if(v.length>=2){
+      timer.current=setTimeout(async()=>{
+        setLoading(true);
+        const oR=await searchOFF(v);
+        setResults(p2=>({...p2,off:oR}));
+        setLoading(false);
+      },600);
+    } else {setResults({taco:localR,off:[]});}
+  };
+  const allResults=[...results.taco,...results.off];
+  const pick=fd=>{setSel(fd);setSrch(fd.n);setShowSugg(false);
+    const u=FU[fd.id]||{};setUnit(u.ml?'ml':u.un?'un':'g');};
+
+  const addFoodItem=()=>{
+    if(!sel||!qty||Number(qty)<=0)return;
+    const q=Number(qty),r=calcR(sel,q,unit);
+    setItemsList(p2=>[...p2,{id:Date.now(),food:sel.n,qty:q,unit,
+      k:Math.round(sel.k*r),p:f2(sel.p*r),c:f2(sel.c*r),f:f2(sel.f*r)}]);
+    setSrch('');setSel(null);setQty('');setUnit('g');setShowSugg(false);
+  };
+  const removeItem=id=>setItemsList(p2=>p2.filter(i=>i.id!==id));
+  const itemsTotals=sumM(itemsList);
+
+  const confirm=()=>{
+    if(detailed){
+      const t=itemsTotals;
+      onSave({...meal,name,items:itemsList,k:Math.round(t.k),p:f2(t.p),c:f2(t.c),f:f2(t.f),estimated:false});
+    } else {
+      onSave({...meal,name,k:Number(k),p:f2(Number(p)),c:f2(Number(c)),f:f2(Number(f)),estimated:false});
+    }
+  };
+
+  const SrcBadge=({label,col})=>html`<span style=${{fontSize:'8px',fontWeight:700,color:col,background:col+'18',
+    padding:'1px 5px',borderRadius:'3px',marginLeft:'4px',flexShrink:0}}>${label}</span>`;
+
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',zIndex:100,
+    display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'18px 16px 52px',width:'100%',maxWidth:'540px',maxHeight:'92vh',overflowY:'auto'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800,display:'flex',alignItems:'center',gap:'7px'}}>
+          <${Ic} n="pencil" size=${14} col=${C.text}/>Editar refeição</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+      </div>
+      <input value=${name} onInput=${e=>setName(e.target.value)} placeholder="Nome da refeição"
+        style=${{width:'100%',padding:'9px 11px',background:C.s1,border:'1px solid '+C.border,
+          borderRadius:'8px',color:C.text,fontSize:'12px',fontWeight:700,outline:'none',marginBottom:'10px'}}/>
+
+      ${!detailed&&html`<div>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'7px',marginBottom:'10px'}}>
+          ${[['Kcal',k,setK,C.accent],['Proteína (g)',p,setP,C.blue],['Carboidratos (g)',c,setC,C.purple],['Gordura (g)',f,setF,C.amber]].map(t=>
+            html`<div key=${t[0]}>
+              <div style=${{fontSize:'8px',color:t[3],letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>${t[0]}</div>
+              <input type="number" step="0.01" value=${t[1]} onInput=${e=>t[2](e.target.value)}
+                style=${{width:'100%',padding:'9px 10px',background:C.s1,border:'1px solid '+t[3]+'44',
+                  borderRadius:'7px',color:t[3],fontSize:'14px',fontWeight:900,outline:'none',textAlign:'center'}}/>
+            </div>`)}
+        </div>
+        <button onClick=${()=>setDetailed(true)} style=${{width:'100%',display:'flex',alignItems:'center',
+          justifyContent:'center',gap:'6px',padding:'9px',marginBottom:'14px',background:'none',
+          border:'1px dashed '+C.border,borderRadius:'8px',color:C.accent,fontSize:'10px',fontWeight:700,cursor:'pointer'}}>
+          <${Ic} n="plus" size=${12} col=${C.accent}/>Editar+ (alterar/adicionar alimentos da refeição)
+        </button>
+      </div>`}
+
+      ${detailed&&html`<div style=${{marginBottom:'14px'}}>
+        <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'8px'}}>
+          Alimentos da refeição
+        </div>
+        ${itemsList.map(it=>html`<div key=${it.id} style=${{display:'flex',justifyContent:'space-between',
+          alignItems:'center',background:C.s1,borderRadius:'8px',padding:'8px 10px',marginBottom:'6px',border:'1px solid '+C.border}}>
+          <div style=${{minWidth:0,flex:1}}>
+            <div style=${{fontSize:'11px',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${it.food}</div>
+            <div style=${{fontSize:'9px',color:C.muted}}>
+              ${it.qty?it.qty+(it.unit||'g')+' · ':''}${Math.round(it.k)} kcal · P${it.p}g C${it.c}g G${it.f}g
+            </div>
+          </div>
+          <button onClick=${()=>removeItem(it.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'4px',flexShrink:0}}>
+            <${Ic} n="trash" size=${13} col=${C.red+'88'}/>
+          </button>
+        </div>`)}
+        ${itemsList.length===0&&html`<div style=${{fontSize:'10px',color:C.dim,textAlign:'center',padding:'10px 0'}}>
+          Nenhum alimento — adicione abaixo</div>`}
+
+        <div style=${{display:'flex',gap:'10px',flexWrap:'wrap',padding:'8px 0',borderTop:'1px solid '+C.border,marginBottom:'8px'}}>
+          <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${Math.round(itemsTotals.k)} kcal</span>
+          <span style=${{fontSize:'9px',color:C.blue}}>P ${itemsTotals.p.toFixed(2)}g</span>
+          <span style=${{fontSize:'9px',color:C.purple}}>C ${itemsTotals.c.toFixed(2)}g</span>
+          <span style=${{fontSize:'9px',color:C.amber}}>G ${itemsTotals.f.toFixed(2)}g</span>
+        </div>
+
+        <div style=${{position:'relative',marginBottom:'6px'}}>
+          <input value=${srch} onInput=${e=>onSrch(e.target.value)} placeholder="Buscar alimento para adicionar..."
+            style=${{width:'100%',padding:'9px 36px 9px 11px',background:C.s1,border:'1px solid '+C.border,
+              borderRadius:'7px',color:C.text,fontSize:'11px',outline:'none'}}/>
+          <span style=${{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)'}}>
+            <${Ic} n="search" size=${14} col=${C.muted}/>
+          </span>
+          ${showSugg&&(allResults.length>0||loading)&&html`<div style=${{
+            position:'absolute',top:'100%',left:0,right:0,background:C.s1,
+            border:'1px solid '+C.border,borderRadius:'8px',zIndex:10,
+            maxHeight:'180px',overflowY:'auto',marginTop:'2px',boxShadow:'0 8px 28px rgba(0,0,0,.5)'}}>
+            ${loading&&html`<div style=${{padding:'7px 11px',fontSize:'10px',color:C.muted}}>Buscando produtos embalados...</div>`}
+            ${allResults.map(fd=>html`<div key=${fd.id} onClick=${()=>pick(fd)} style=${{padding:'9px 11px',cursor:'pointer',
+              borderBottom:'1px solid '+C.border+'88',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'6px'}}>
+              <div style=${{flex:1,minWidth:0}}>
+                <span style=${{fontSize:'11px',display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${fd.n}</span>
+                <span style=${{fontSize:'9px',color:C.muted}}>${fd.k} kcal · P${fd.p}g C${fd.c}g G${fd.f}g/100g</span>
+              </div>
+              <${SrcBadge} label=${fd.srcLabel} col=${fd.srcCol}/>
+            </div>`)}
+          </div>`}
+        </div>
+        <div style=${{display:'flex',gap:'6px'}}>
+          <input type="number" value=${qty} onInput=${e=>setQty(e.target.value)}
+            onKeyDown=${e=>e.key==='Enter'&&addFoodItem()} placeholder="Qtd" disabled=${!sel}
+            style=${{flex:1,padding:'8px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:sel?C.text:C.dim,fontSize:'12px',outline:'none',textAlign:'center',opacity:sel?1:0.5}}/>
+          <select value=${unit} onChange=${e=>setUnit(e.target.value)} disabled=${!sel}
+            style=${{padding:'8px 6px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:sel?C.text:C.dim,fontSize:'10px',outline:'none',opacity:sel?1:0.5}}>
+            <option value="g">g</option><option value="ml">ml</option><option value="un">un</option>
+          </select>
+          <button onClick=${addFoodItem} disabled=${!sel||!qty} style=${{padding:'8px 13px',
+            background:sel&&qty?C.accent:C.dim,border:'none',borderRadius:'6px',
+            color:'#fff',fontSize:'14px',fontWeight:700,cursor:sel&&qty?'pointer':'default',lineHeight:1}}>+</button>
+        </div>
+      </div>`}
+
+      <button onClick=${confirm} disabled=${detailed&&itemsList.length===0} style=${{width:'100%',padding:'12px',
+        background:(detailed&&itemsList.length===0)?C.dim:C.accent,border:'none',
+        borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,
+        cursor:(detailed&&itemsList.length===0)?'default':'pointer',letterSpacing:'1px'}}>
+        SALVAR ALTERAÇÕES</button>
+    </div>
+  </div>`;}
+
+/* ── ADD MEAL ── */
+const MEAL_OPTIONS=['Café da manhã','Lanche da manhã','Almoço','Lanche da tarde',
+  'Pré-treino','Pós-treino','Jantar','Ceia','Outro'];
+
+function AddMeal({onSave,onClose}){
+  const [mode,setMode]=useState('search');
+  const [name,setName]=useState('');
+  const [customName,setCustomName]=useState('');
+  const [isCustom,setIsCustom]=useState(false);
+  const [items,setItems]=useState([]);
+  const [srch,setSrch]=useState('');
+  const [sel,setSel]=useState(null);
+  const [qty,setQty]=useState('');
+  const [unit,setUnit]=useState('g');
+  const [results,setResults]=useState({taco:[],off:[]});
+  const [loading,setLoading]=useState(false);
+  const [showSugg,setShowSugg]=useState(false);
+  const [showC,setShowC]=useState(false);
+  const [cust,setCust]=useState({name:'',k:0,p:0,c:0,f:0});
+  // photo mode
+  const [photo,setPhoto]=useState(null);
+  const [analyzing,setAnalyzing]=useState(false);
+  const [photoResult,setPhotoResult]=useState(null);
+  const [photoEdit,setPhotoEdit]=useState({name:'',k:0,p:0,c:0,f:0});
+  const qRef=useRef(),timer=useRef();
+
+  const pick=f=>{setSel(f);setSrch(f.n);setShowSugg(false);
+    const u=FU[f.id]||{};setUnit(u.ml?'ml':u.un?'un':'g');
+    setTimeout(()=>qRef.current&&qRef.current.focus(),50);};
+
+  const onSrch=async v=>{
+    setSrch(v);setSel(null);setShowSugg(true);setShowC(false);
+    clearTimeout(timer.current);
+    const localR=searchLocal(v);
+    setResults(p=>({...p,taco:localR}));
+    if(v.length>=2){
+      timer.current=setTimeout(async()=>{
+        setLoading(true);
+        const oR=await searchOFF(v);
+        setResults(p=>({...p,off:oR}));
+        setLoading(false);
+      },600);
+    } else {setResults({taco:localR,off:[]});}
+  };
+
+  const allResults=[...results.taco,...results.off];
+
+  const addItem=()=>{if(!sel||!qty||Number(qty)<=0)return;const q=Number(qty),r=calcR(sel,q,unit);
+    setItems(p=>[...p,{id:Date.now(),food:sel.n,qty:q,unit,
+      k:Math.round(sel.k*r),p:f2(sel.p*r),c:f2(sel.c*r),f:f2(sel.f*r)}]);
+    setSrch('');setSel(null);setQty('');setUnit('g');setShowSugg(false);setResults({taco:[],off:[]});};
+
+  const addCustom=()=>{if(!cust.name.trim()||!qty||Number(qty)<=0)return;const q=Number(qty),r=q/100;
+    setItems(p=>[...p,{id:Date.now(),food:cust.name.trim(),qty:q,unit:'g',
+      k:Math.round(cust.k*r),p:f2(cust.p*r),c:f2(cust.c*r),f:f2(cust.f*r)}]);
+    setSrch('');setSel(null);setQty('');setShowC(false);setCust({name:'',k:0,p:0,c:0,f:0});};
+
+  const totals=sumM(items);
+
+  // Photo analysis
+  const analyzePhoto=async file=>{
+    const ak=localStorage.getItem('ak');
+    if(!ak){alert('Configure sua API key da Anthropic nas Configurações');return;}
+    setAnalyzing(true);setPhotoResult(null);
+    const b64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+    try{
+      const resp=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',
+        headers:{'Content-Type':'application/json','x-api-key':ak,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+        body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:500,
+          system:'Você é nutricionista especialista. Analise a foto da refeição e retorne SOMENTE JSON válido, sem texto extra: {"name":"nome da refeição","kcal":0,"protein":0.00,"carbs":0.00,"fat":0.00,"confidence":"alta|media|baixa","items":["item1","item2"]}',
+          messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:file.type,data:b64}},
+            {type:'text',text:'Estime os macronutrientes desta refeição. Retorne JSON.'}]}]})});
+      const data=await resp.json();
+      const txt=data.content.filter(b=>b.type==='text').map(b=>b.text).join('');
+      const parsed=JSON.parse(txt.replace(/```json|```/g,'').trim());
+      setPhotoResult(parsed);
+      setPhotoEdit({name:parsed.name,k:parsed.kcal,p:f2(parsed.protein),c:f2(parsed.carbs),f:f2(parsed.fat)});
+    }catch(e){alert('Erro na análise: '+e.message);}
+    setAnalyzing(false);
+  };
+
+  const finalName=isCustom?customName:name;
+
+  const confirmPhoto=()=>{
+    onSave({id:Date.now(),name:photoEdit.name||'Refeição',k:Number(photoEdit.k),
+      p:f2(Number(photoEdit.p)),c:f2(Number(photoEdit.c)),f:f2(Number(photoEdit.f))});
+  };
+
+  const confirmManual=()=>{if(!items.length)return;
+    onSave(Object.assign({id:Date.now(),name:finalName||'Refeição',items:items},totals));};
+
+  const SrcBadge=({label,col})=>html`<span style=${{fontSize:'8px',fontWeight:700,color:col,background:col+'18',
+    padding:'1px 5px',borderRadius:'3px',marginLeft:'4px',flexShrink:0}}>${label}</span>`;
+
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',zIndex:100,
+    display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
+    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'16px 15px 52px',maxHeight:'94vh',overflowY:'auto'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800}}>Adicionar Refeição</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+      </div>
+
+      <div style=${{display:'flex',gap:'4px',background:C.s1,borderRadius:'8px',padding:'3px',marginBottom:'12px'}}>
+        ${[['search','search','Buscar'],['photo','camera','Foto']].map(t=>
+          html`<button key=${t[0]} onClick=${()=>{setMode(t[0]);}} style=${{flex:1,padding:'7px 0',border:'none',
+            borderRadius:'6px',cursor:'pointer',fontSize:'11px',fontWeight:700,
+            background:mode===t[0]?C.accent:'transparent',color:mode===t[0]?'#fff':C.muted,
+            display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+            <${Ic} n=${t[1]} size=${13} col=${mode===t[0]?'#fff':C.muted}/>${t[2]}
+          </button>`)}
+      </div>
+
+      ${mode==='photo'&&html`<div>
+        ${!localStorage.getItem('ak')&&html`<div style=${{fontSize:'10px',color:C.red,padding:'8px 10px',
+          background:C.red+'14',borderRadius:'7px',marginBottom:'10px',
+          display:'flex',alignItems:'center',gap:'6px'}}>
+          <${Ic} n="gear" size=${12} col=${C.red}/>
+          Sem API key. Configure nas Configurações para usar análise de fotos.</div>`}
+        ${!photo&&!analyzing&&html`<label style=${{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+          gap:'8px',padding:'28px',border:'1px dashed '+C.border,borderRadius:'10px',
+          cursor:'pointer',color:C.muted,fontSize:'11px',minHeight:'120px'}}>
+          <${Ic} n="camera" size=${32} col=${C.muted}/>
+          Tirar foto ou escolher da galeria
+          <input type="file" accept="image/*" capture="environment" style=${{display:'none'}}
+            onChange=${e=>{const f=e.target.files[0];if(f){setPhoto(URL.createObjectURL(f));analyzePhoto(f);}}}/>
+        </label>`}
+        ${photo&&html`<img src=${photo} style=${{width:'100%',maxHeight:'200px',objectFit:'cover',borderRadius:'10px',marginBottom:'10px'}} alt=""/>`}
+        ${analyzing&&html`<div style=${{textAlign:'center',padding:'20px',color:C.muted,fontSize:'12px'}}>
+          <${Ic} n="search" size=${24} col=${C.accent} style=${{marginBottom:'8px'}}/>
+          <div>Analisando nutrientes...</div>
+        </div>`}
+        ${photoResult&&!analyzing&&html`<div style=${{background:C.s1,borderRadius:'10px',padding:'12px',border:'1px solid '+C.border}}>
+          <div style=${{fontSize:'10px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'8px',
+            display:'flex',justifyContent:'space-between'}}>
+            <span>Resultado da análise</span>
+            <span style=${{color:photoResult.confidence==='alta'?C.ok:C.amber}}>${photoResult.confidence} confiança</span>
+          </div>
+          ${photoResult.items&&html`<div style=${{fontSize:'10px',color:C.muted,marginBottom:'8px'}}>${photoResult.items.join(', ')}</div>`}
+          <input value=${photoEdit.name} onInput=${e=>setPhotoEdit(p=>({...p,name:e.target.value}))} placeholder="Nome"
+            style=${{width:'100%',padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:C.text,fontSize:'11px',outline:'none',marginBottom:'6px'}}/>
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'5px',marginBottom:'10px'}}>
+            ${[['k','Kcal',C.accent],['p','Prot (g)',C.blue],['c','Carb (g)',C.purple],['f','Gord (g)',C.amber]].map(t=>
+              html`<div key=${t[0]}>
+                <div style=${{fontSize:'8px',color:t[2],marginBottom:'2px'}}>${t[1]}</div>
+                <input type="number" step="0.01" value=${photoEdit[t[0]]}
+                  onInput=${e=>setPhotoEdit(p=>({...p,[t[0]]:e.target.value}))}
+                  style=${{width:'100%',padding:'6px 8px',background:C.bg,border:'1px solid '+C.border,
+                    borderRadius:'5px',color:t[2],fontSize:'12px',fontWeight:700,outline:'none'}}/>
+              </div>`)}
+          </div>
+          <button onClick=${confirmPhoto} style=${{width:'100%',padding:'11px',background:C.ok,border:'none',
+            borderRadius:'8px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer'}}>
+            Salvar Refeição</button>
+        </div>`}
+        ${photo&&!analyzing&&!photoResult&&html`<button onClick=${()=>{setPhoto(null);}} style=${{
+          width:'100%',padding:'8px',background:'none',border:'1px solid '+C.border,
+          borderRadius:'7px',color:C.muted,fontSize:'11px',cursor:'pointer',marginTop:'8px'}}>Tentar novamente</button>`}
+      </div>`}
+
+      ${mode==='search'&&html`<div>
+        <select value=${isCustom?'Outro':name}
+          onChange=${e=>{const v=e.target.value;if(v==='Outro'){setIsCustom(true);setName('Outro');}else{setIsCustom(false);setName(v);}}}
+          style=${{width:'100%',padding:'9px 11px',background:C.s1,border:'1px solid '+C.border,
+            borderRadius:'8px',color:name?C.text:C.muted,fontSize:'12px',fontWeight:name&&name!=='Outro'?700:400,
+            outline:'none',marginBottom:'7px',WebkitAppearance:'none',appearance:'none',
+            backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23556070' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+            backgroundRepeat:'no-repeat',backgroundPosition:'right 11px center'}}>
+          <option value="" style=${{color:C.muted}}>Selecione a refeição...</option>
+          ${MEAL_OPTIONS.map(m=>html`<option key=${m} value=${m} style=${{background:C.s1,color:C.text}}>${m}</option>`)}
+        </select>
+        ${isCustom&&html`<input value=${customName} onInput=${e=>setCustomName(e.target.value)}
+          placeholder="Nome personalizado..."
+          style=${{width:'100%',padding:'8px 11px',background:C.s1,border:'1px solid '+C.border,
+            borderRadius:'8px',color:C.text,fontSize:'11px',outline:'none',marginBottom:'7px'}}/>`}
+
+        <div style=${{position:'relative',marginBottom:'7px'}}>
+          <input value=${srch} onInput=${e=>onSrch(e.target.value)} placeholder="Buscar alimento..."
+            style=${{width:'100%',padding:'9px 36px 9px 11px',background:C.s1,border:'1px solid '+C.border,
+              borderRadius:'7px',color:C.text,fontSize:'11px',outline:'none'}}/>
+          <span style=${{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)'}}>
+            <${Ic} n="search" size=${14} col=${C.muted}/>
+          </span>
+          ${showSugg&&(allResults.length>0||loading)&&html`<div style=${{
+            position:'absolute',top:'100%',left:0,right:0,background:C.s1,
+            border:'1px solid '+C.border,borderRadius:'8px',zIndex:10,
+            maxHeight:'210px',overflowY:'auto',marginTop:'2px',boxShadow:'0 8px 28px rgba(0,0,0,.5)'}}>
+            ${loading&&html`<div style=${{padding:'7px 11px',fontSize:'10px',color:C.muted,
+              display:'flex',alignItems:'center',gap:'6px'}}>
+              <${Ic} n="search" size=${11} col=${C.muted}/>Buscando produtos embalados...</div>`}
+            ${allResults.map(f=>html`<div key=${f.id} onClick=${()=>pick(f)} style=${{padding:'9px 11px',cursor:'pointer',
+              borderBottom:'1px solid '+C.border+'88',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'6px'}}>
+              <div style=${{flex:1,minWidth:0}}>
+                <span style=${{fontSize:'11px',display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</span>
+                <span style=${{fontSize:'9px',color:C.muted}}>${f.k} kcal · P${f.p}g C${f.c}g G${f.f}g/100g
+                  ${f.note?html` · <span style=${{color:C.amber}}>${f.note}</span>`:''}
+                </span>
+              </div>
+              <${SrcBadge} label=${f.srcLabel} col=${f.srcCol}/>
+            </div>`)}
+            ${!loading&&allResults.length===0&&srch.length>=2&&html`<div
+              onClick=${()=>{setShowSugg(false);setShowC(true);setCust(p=>({...p,name:srch}));}}
+              style=${{padding:'9px 11px',cursor:'pointer',fontSize:'11px',color:C.blue,
+                display:'flex',alignItems:'center',gap:'6px'}}>
+              <${Ic} n="pencil" size=${12} col=${C.blue}/>Cadastrar "${srch}" manualmente
+            </div>`}
+          </div>`}
+        </div>
+
+        <div style=${{display:'flex',gap:'6px',marginBottom:'5px'}}>
+          <input ref=${qRef} type="number" value=${qty} onInput=${e=>setQty(e.target.value)}
+            onKeyDown=${e=>e.key==='Enter'&&addItem()} placeholder="Qtd" disabled=${!sel}
+            style=${{flex:1,padding:'8px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:sel?C.text:C.dim,fontSize:'12px',outline:'none',textAlign:'center',opacity:sel?1:0.5}}/>
+          <select value=${unit} onChange=${e=>setUnit(e.target.value)} disabled=${!sel}
+            style=${{padding:'8px 6px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:sel?C.text:C.dim,fontSize:'10px',outline:'none',opacity:sel?1:0.5}}>
+            <option value="g">g</option><option value="ml">ml</option><option value="un">un</option>
+          </select>
+          <button onClick=${addItem} disabled=${!sel||!qty} style=${{padding:'8px 13px',
+            background:sel&&qty?C.accent:C.dim,border:'none',borderRadius:'6px',
+            color:'#fff',fontSize:'14px',fontWeight:700,cursor:sel&&qty?'pointer':'default',lineHeight:1}}>+</button>
+        </div>
+
+        ${sel&&qty&&Number(qty)>0&&(()=>{const r=calcR(sel,Number(qty),unit);
+          return html`<div style=${{display:'flex',gap:'9px',marginBottom:'7px',padding:'6px 8px',
+            background:C.s1,borderRadius:'6px',flexWrap:'wrap'}}>
+            <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${Math.round(sel.k*r)} kcal</span>
+            <span style=${{fontSize:'10px',color:C.blue}}>P ${f2(sel.p*r).toFixed(2)}g</span>
+            <span style=${{fontSize:'10px',color:C.purple}}>C ${f2(sel.c*r).toFixed(2)}g</span>
+            <span style=${{fontSize:'10px',color:C.amber}}>G ${f2(sel.f*r).toFixed(2)}g</span>
+          </div>`;
+        })()}
+
+        ${showC&&html`<div style=${{background:C.s1,borderRadius:'9px',padding:'11px',marginBottom:'8px',border:'1px solid '+C.border}}>
+          <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'7px'}}>Cadastro manual (por 100g)</div>
+          <input value=${cust.name} onInput=${e=>setCust(p=>({...p,name:e.target.value}))} placeholder="Nome"
+            style=${{width:'100%',padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
+              color:C.text,fontSize:'11px',outline:'none',marginBottom:'6px'}}/>
+          <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'5px',marginBottom:'6px'}}>
+            ${[['k','Kcal',C.accent],['p','Prot (g)',C.blue],['c','Carb (g)',C.purple],['f','Gord (g)',C.amber]].map(t=>
+              html`<div key=${t[0]}><div style=${{fontSize:'8px',color:t[2],marginBottom:'2px'}}>${t[1]}</div>
+                <input type="number" step="0.01" value=${cust[t[0]]}
+                  onInput=${e=>setCust(p=>({...p,[t[0]]:Number(e.target.value)}))}
+                  style=${{width:'100%',padding:'6px 8px',background:C.bg,border:'1px solid '+C.border,
+                    borderRadius:'5px',color:C.text,fontSize:'11px',outline:'none'}}/></div>`)}
+          </div>
+          <div style=${{display:'flex',gap:'5px',marginBottom:'5px'}}>
+            <input type="number" value=${qty} onInput=${e=>setQty(e.target.value)} placeholder="Qtd (g)"
+              style=${{flex:1,padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,
+                borderRadius:'5px',color:C.text,fontSize:'11px',outline:'none'}}/>
+          </div>
+          <button onClick=${addCustom} style=${{width:'100%',padding:'8px',background:C.accent,border:'none',
+            borderRadius:'6px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Adicionar</button>
+        </div>`}
+
+        ${items.length>0&&html`<div style=${{background:C.s1,borderRadius:'9px',padding:'9px',marginBottom:'8px'}}>
+          ${items.map(item=>html`<div key=${item.id} style=${{display:'flex',justifyContent:'space-between',
+            alignItems:'center',marginBottom:'4px'}}>
+            <div><span style=${{fontSize:'10px',fontWeight:600}}>${item.food}</span>
+              <span style=${{fontSize:'9px',color:C.muted,marginLeft:'4px'}}>${item.qty}${item.unit}</span></div>
+            <div style=${{display:'flex',gap:'8px',alignItems:'center'}}>
+              <span style=${{fontSize:'10px',color:C.accent,fontWeight:700}}>${item.k} kcal</span>
+              <button onClick=${()=>setItems(p=>p.filter(x=>x.id!==item.id))}
+                style=${{background:'none',border:'none',cursor:'pointer'}}>
+                <${Ic} n="trash" size=${12} col=${C.dim}/></button>
+            </div>
+          </div>`)}
+          <div style=${{borderTop:'1px solid '+C.border,paddingTop:'6px',marginTop:'4px',display:'flex',gap:'10px',flexWrap:'wrap'}}>
+            <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${totals.k} kcal</span>
+            <span style=${{fontSize:'9px',color:C.blue}}>P ${totals.p.toFixed(2)}g</span>
+            <span style=${{fontSize:'9px',color:C.purple}}>C ${totals.c.toFixed(2)}g</span>
+            <span style=${{fontSize:'9px',color:C.amber}}>G ${totals.f.toFixed(2)}g</span>
+          </div>
+        </div>`}
+
+        ${items.length>0&&html`<button onClick=${confirmManual} style=${{width:'100%',padding:'12px',background:C.ok,
+          border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'1px'}}>
+          SALVAR REFEIÇÃO</button>`}
+      </div>`}
+    </div>
+  </div>`;}
+
+/* ── SETTINGS ── */
+const DEF_RATIOS={protein:GOALS.protein/GOALS.kcal,carbs:GOALS.carbs/GOALS.kcal,fat:GOALS.fat/GOALS.kcal};
+function Settings({onClose}){
+  const [k,setK]=useState(()=>localStorage.getItem('ak')||'');
+  const sg=ls.g('goals')||{};
+  const [kcal,setKcal]=useState(()=>sg.kcal||GOALS.kcal);
+  const [prot,setProt]=useState(()=>sg.protein||GOALS.protein);
+  const [carb,setCarb]=useState(()=>sg.carbs||GOALS.carbs);
+  const [fat,setFat]=useState(()=>sg.fat||GOALS.fat);
+  const [autoP,setAutoP]=useState(()=>sg.autoProt!==false);
+  const [autoC,setAutoC]=useState(()=>sg.autoCarbs!==false);
+  const [autoF,setAutoF]=useState(()=>sg.autoFat!==false);
+  const prevKcal=useRef(Number(sg.kcal||GOALS.kcal));
+  const [evolveWeeks,setEvolveWeeks]=useState(()=>ls.g('evolveWeeks')||6);
+
+  // Ao alterar kcal, os macros ainda em modo "auto" reescalam proporcionalmente
+  const onKcalInput=v=>{
+    const nk=Number(v),ok=prevKcal.current;
+    if(nk>0&&ok>0){
+      if(autoP)setProt(p=>f2((Number(p)||0)/ok*nk));
+      if(autoC)setCarb(p=>f2((Number(p)||0)/ok*nk));
+      if(autoF)setFat(p=>f2((Number(p)||0)/ok*nk));
+      prevKcal.current=nk;
+    }
+    setKcal(v);
+  };
+  // Editar um macro manualmente trava esse campo (sai do modo auto)
+  const manual=(setter,autoSetter)=>v=>{setter(v);autoSetter(false);};
+  const reauto=field=>{
+    const nk=Number(kcal)||GOALS.kcal;
+    if(field==='protein'){setProt(f2(DEF_RATIOS.protein*nk));setAutoP(true);}
+    if(field==='carbs'){setCarb(f2(DEF_RATIOS.carbs*nk));setAutoC(true);}
+    if(field==='fat'){setFat(f2(DEF_RATIOS.fat*nk));setAutoF(true);}
+  };
+
+  const save=()=>{
+    localStorage.setItem('ak',k);
+    ls.s('goals',{kcal:Number(kcal),protein:Number(prot),carbs:Number(carb),fat:Number(fat),
+      autoProt:autoP,autoCarbs:autoC,autoFat:autoF});
+    ls.s('evolveWeeks',Number(evolveWeeks)||6);
+    onClose();
+  };
+
+  const FIELDS=[
+    {label:'Kcal',val:kcal,onIn:onKcalInput,col:C.accent,auto:null},
+    {label:'Proteína g',val:prot,onIn:manual(setProt,setAutoP),col:C.blue,auto:autoP,onReauto:()=>reauto('protein')},
+    {label:'Carbs g',val:carb,onIn:manual(setCarb,setAutoC),col:C.purple,auto:autoC,onReauto:()=>reauto('carbs')},
+    {label:'Gordura g',val:fat,onIn:manual(setFat,setAutoF),col:C.amber,auto:autoF,onReauto:()=>reauto('fat')},
+  ];
+
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',zIndex:200,
+    display:'flex',alignItems:'center',justifyContent:'center',padding:'20px'}}>
+    <div style=${{background:C.s1,borderRadius:'14px',padding:'20px',width:'100%',maxWidth:'340px',maxHeight:'90vh',overflowY:'auto'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800,display:'flex',alignItems:'center',gap:'7px'}}>
+          <${Ic} n="gear" size=${15} col=${C.text}/>Configurações</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
+      </div>
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Meta calórica diária</div>
+      <div style=${{fontSize:'9px',color:C.dim,marginBottom:'7px',lineHeight:'1.5'}}>
+        Proteína, carboidratos e gordura acompanham a caloria proporcionalmente. Editar um deles manualmente trava (destrava tocando em "restaurar").</div>
+      <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'14px'}}>
+        ${FIELDS.map(t=>html`<div key=${t.label}>
+          <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'2px'}}>
+            <span style=${{fontSize:'8px',color:t.col}}>${t.label}</span>
+            ${t.auto===true&&html`<span style=${{fontSize:'7px',color:C.ok,fontWeight:700,letterSpacing:'.5px'}}>AUTO</span>`}
+            ${t.auto===false&&html`<span onClick=${t.onReauto}
+              style=${{fontSize:'7px',color:C.dim,cursor:'pointer',textDecoration:'underline'}}>restaurar</span>`}
+          </div>
+          <input type="number" step="0.01" value=${t.val} onInput=${e=>t.onIn(e.target.value)}
+            style=${{width:'100%',padding:'7px 9px',background:C.bg,border:'1px solid '+t.col+'44',
+              borderRadius:'6px',color:C.text,fontSize:'12px',fontWeight:700,outline:'none'}}/>
+        </div>`)}
+      </div>
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Aviso de evolução do treino</div>
+      <div style=${{fontSize:'10px',color:C.dim,marginBottom:'6px',lineHeight:'1.5'}}>Depois de quantas semanas no mesmo programa avisar que é hora de evoluir</div>
+      <div style=${{display:'flex',alignItems:'center',gap:'8px',marginBottom:'16px'}}>
+        <input type="number" min="1" value=${evolveWeeks} onInput=${e=>setEvolveWeeks(e.target.value)}
+          style=${{width:'70px',padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,
+            borderRadius:'6px',color:C.text,fontSize:'12px',fontWeight:700,outline:'none',textAlign:'center'}}/>
+        <span style=${{fontSize:'10px',color:C.muted}}>semanas</span>
+      </div>
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Anthropic API Key</div>
+      <div style=${{fontSize:'10px',color:C.dim,marginBottom:'6px',lineHeight:'1.5'}}>Necessária para análise de fotos e evolução automática do treino</div>
+      <input type="password" value=${k} onInput=${e=>setK(e.target.value)} placeholder="sk-ant-..."
+        style=${{width:'100%',padding:'9px 11px',background:C.bg,border:'1px solid '+C.border,borderRadius:'7px',
+          color:C.text,fontSize:'11px',outline:'none',marginBottom:'16px'}}/>
+      <button onClick=${save} style=${{width:'100%',padding:'11px',background:C.accent,border:'none',
+        borderRadius:'8px',color:'#fff',fontSize:'12px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+    </div>
+  </div>`;}
+
+/* ── NAV (icons only, floating glass) ── */
+function Nav({tab,go}){
+  const tabs=[{id:'treino',ic:'dumbbell'},{id:'checkin',ic:'calendar'},
+    {id:'peso',ic:'trending'},{id:'macros',ic:'chart'}];
+  return html`<div style=${{
+    position:'fixed',bottom:'14px',left:'12px',right:'12px',
+    background:'rgba(13,18,24,0.78)',
+    backdropFilter:'blur(28px) saturate(180%)',
+    WebkitBackdropFilter:'blur(28px) saturate(180%)',
+    borderRadius:'22px',
+    border:'1px solid rgba(255,255,255,0.08)',
+    boxShadow:'0 8px 32px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)',
+    display:'flex',height:'56px',zIndex:50,
+    paddingBottom:'env(safe-area-inset-bottom,0px)',
+    overflow:'hidden',
+  }}>
+    ${tabs.map(t=>html`<button key=${t.id} onClick=${()=>go(t.id)} style=${{flex:1,background:'none',border:'none',
+      display:'flex',alignItems:'center',justifyContent:'center',
+      cursor:'pointer',position:'relative',padding:'0',transition:'opacity .15s'}}>
+      ${tab===t.id&&html`<div style=${{position:'absolute',top:0,width:'20px',height:'2px',
+        background:C.accent,borderRadius:'0 0 2px 2px',
+        boxShadow:'0 0 8px '+C.accent+'88'}}/>`}
+      <${Ic} n=${t.ic} size=${22} col=${tab===t.id?C.accent:C.muted}/>
+    </button>`)}
+  </div>`;}
+
+/* ── APP ── */
+const TITLES={treino:'Programa de Treino',checkin:'Check-in',peso:'Evolução de Peso',macros:'Macros Diários'};
+function App(){
+  const [tab,setTab]=useState('treino');
+  const [cfg,setCfg]=useState(false);
+  const isNutrition=['peso','macros'].indexOf(tab)>=0;
+  return html`<div>
+    <div style=${{position:'sticky',top:0,background:C.bg,zIndex:40,borderBottom:'1px solid '+C.border,
+      padding:'12px 14px 9px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      <div>
+        <div style=${{fontSize:'8px',color:C.accent,fontWeight:700,letterSpacing:'3px',textTransform:'uppercase'}}>
+          ${isNutrition?'Nutrição':'Hipertrofia'}</div>
+        <div style=${{fontSize:'15px',fontWeight:900,letterSpacing:'-0.3px'}}>${TITLES[tab]}</div>
+      </div>
+      <button onClick=${()=>setCfg(true)} style=${{background:'none',border:'none',cursor:'pointer',
+        padding:'6px',borderRadius:'8px',display:'flex',alignItems:'center',justifyContent:'center',
+        border:'1px solid '+C.border}}>
+        <${Ic} n="gear" size=${17} col=${C.muted}/>
+      </button>
+    </div>
+    <div style=${{paddingTop:'6px'}}>
+      ${tab==='treino'&&html`<${Treino}/>`}
+      ${tab==='checkin'&&html`<${Checkin}/>`}
+      ${tab==='peso'&&html`<${Peso}/>`}
+      ${tab==='macros'&&html`<${Macros}/>`}
+    </div>
+    <${Nav} tab=${tab} go=${setTab}/>
+    ${cfg&&html`<${Settings} onClose=${()=>setCfg(false)}/>`}
+  </div>`;}
+
+render(html`<${App}/>`,document.getElementById('app'));
+document.getElementById('splash').style.display='none';
+</script>
+
+<script>
+(function(){
+  var c=document.createElement('canvas');c.width=512;c.height=512;
+  var x=c.getContext('2d');
+  function rr(X,Y,W,H,R){x.beginPath();x.moveTo(X+R,Y);x.lineTo(X+W-R,Y);x.quadraticCurveTo(X+W,Y,X+W,Y+R);
+    x.lineTo(X+W,Y+H-R);x.quadraticCurveTo(X+W,Y+H,X+W-R,Y+H);x.lineTo(X+R,Y+H);
+    x.quadraticCurveTo(X,Y+H,X,Y+H-R);x.lineTo(X,Y+R);x.quadraticCurveTo(X,Y,X+R,Y);x.closePath();}
+  // ── Ícone: anel de meta + haltere vazado ──
+  x.fillStyle='#171D27';x.fillRect(0,0,512,512);
+  var CX=256,CY=256,RR=183,LW=32;
+  x.lineWidth=LW;x.lineCap='round';
+  x.strokeStyle='rgba(255,107,53,0.22)';
+  x.beginPath();x.arc(CX,CY,RR,0,Math.PI*2);x.stroke();
+  x.strokeStyle='#FF6B35';
+  x.beginPath();x.arc(CX,CY,RR,-Math.PI/2,-Math.PI/2+Math.PI*2*0.748);x.stroke();
+  x.fillStyle='#FF6B35';
+  rr(CX-36.6,CY-13.3,73.1,26.5,10.1);x.fill();
+  rr(CX-66.7,CY-43.0,26.5,85.9,11.0);x.fill();
+  rr(CX+40.2,CY-43.0,26.5,85.9,11.0);x.fill();
+  rr(CX-98.7,CY-27.4,24.7,54.9,10.1);x.fill();
+  rr(CX+74.1,CY-27.4,24.7,54.9,10.1);x.fill();
+  var ico=c.toDataURL('image/png');
+  document.getElementById('aicon').href=ico;
+  var mf={name:"Gainz",short_name:"Gainz",start_url:"./",display:"standalone",
+    background_color:"#0B0E14",theme_color:"#FF6B35",orientation:"portrait",
+    icons:[{src:ico,sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
+  document.getElementById('mfst').href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
+  if('serviceWorker' in navigator){
+    var sw='const V="t3",U=["https://cdn.jsdelivr.net/npm/preact@10.19.3/dist/preact.umd.js","https://cdn.jsdelivr.net/npm/preact@10.19.3/hooks/dist/hooks.umd.js","https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"];self.addEventListener("install",e=>e.waitUntil(caches.open(V).then(c=>c.addAll(U).catch(()=>{}))));self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k))))));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));';
+    try{navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(function(){});}catch(e){}
+  }
+})();
+</script>
+</body>
+</html>
