@@ -2,6 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>Gainz</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -40,6 +43,7 @@ input,button,select,textarea{font-family:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
+const BUILD='2026.07.31-1';
 const {h,render}=preact;
 const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
 const html=htm.bind(h);
@@ -2446,6 +2450,7 @@ function Settings({onClose}){
           color:C.text,fontSize:'11px',outline:'none',marginBottom:'16px'}}/>
       <button onClick=${save} style=${{width:'100%',padding:'11px',background:C.accent,border:'none',
         borderRadius:'8px',color:'#fff',fontSize:'12px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+      <div style=${{textAlign:'center',fontSize:'9px',color:C.dim,marginTop:'12px'}}>versão ${BUILD}</div>
     </div>
   </div>`;}
 
@@ -2536,9 +2541,12 @@ document.getElementById('splash').style.display='none';
     background_color:"#0B0E14",theme_color:"#FF6B35",orientation:"portrait",
     icons:[{src:ico,sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
   document.getElementById('mfst').href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
+  // Service worker: removido (o registro via blob: URL era instável e podia contribuir
+  // para cache desatualizado). Isto desregistra qualquer SW de versões antigas do app
+  // que ainda esteja ativo no navegador/PWA do usuário.
   if('serviceWorker' in navigator){
-    var sw='const V="t4",U=["https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/preact.min.js","https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/hooks.umd.js","https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"];self.addEventListener("install",e=>e.waitUntil(caches.open(V).then(c=>c.addAll(U).catch(()=>{}))));self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k))))));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));';
-    try{navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(function(){});}catch(e){}
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister())).catch(()=>{});
+    if(window.caches)caches.keys().then(ks=>ks.forEach(k=>caches.delete(k))).catch(()=>{});
   }
 })();
 </script>
