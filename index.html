@@ -186,6 +186,50 @@ const ls={
   s:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
 };
 const sumM=ms=>ms.reduce((a,m)=>({k:a.k+(m.k||0),p:a.p+(m.p||0),c:a.c+(m.c||0),f:a.f+(m.f||0)}),{k:0,p:0,c:0,f:0});
+
+/* ── METAS (peso / condicionamento / kcal por refeição) ── */
+const METAS_DEF={startKg:null,startDate:null,targetKg:null,weeklyKg:0.5,workoutsWeek:5};
+const getMetas=()=>Object.assign({},METAS_DEF,ls.g('metas')||{});
+const MEAL_DIST_DEF={'Café da manhã':27,'Lanche da manhã':10,'Almoço':28,'Lanche da tarde':10,
+  'Pré-treino':0,'Pós-treino':0,'Jantar':20,'Ceia':5,'Outro':0};
+const getMealDist=()=>Object.assign({},MEAL_DIST_DEF,ls.g('mealDist')||{});
+const mealGoalsOn=()=>ls.g('mealGoalsOn')===true;
+/* Peso atual = último registro do wlog */
+const currentKg=()=>{const w=ls.g('wlog')||[];return w.length?w[w.length-1].kg:null;};
+/* Ritmo real (kg/semana) usando os registros dos últimos `days` dias */
+const realWeeklyRate=(days)=>{
+  const w=ls.g('wlog')||[];if(w.length<2)return null;
+  const lim=offsetDate(days||28);
+  const sub=w.filter(x=>x.date>=lim);
+  const arr=sub.length>=2?sub:w.slice(-2);
+  const a=arr[0],b=arr[arr.length-1];
+  const dd=(new Date(b.date+'T12:00:00')-new Date(a.date+'T12:00:00'))/86400000;
+  if(dd<3)return null;
+  return f2(((b.kg-a.kg)/dd)*7);
+};
+
+/* ── MEUS ALIMENTOS / MINHAS REFEIÇÕES ── */
+const getMyFoods=()=>ls.g('myFoods')||[];
+const saveMyFood=f=>{const l=getMyFoods().filter(x=>norm(x.n)!==norm(f.n));ls.s('myFoods',[f,...l].slice(0,80));};
+const getMyMeals=()=>ls.g('myMeals')||[];
+const saveMyMeal=m=>{const l=getMyMeals().filter(x=>norm(x.name)!==norm(m.name));ls.s('myMeals',[m,...l].slice(0,50));};
+
+/* ── REGISTRADO RECENTEMENTE ── */
+const recentFoods=(days,limit)=>{
+  const seen=new Map();
+  for(let i=0;i<(days||21);i++){
+    const d=ls.g(tkey(i));if(!d||!d.meals)continue;
+    for(const m of d.meals){
+      if(m.estimated||!m.items)continue;
+      for(const it of m.items){
+        if(!it||!it.food)continue;
+        const key=norm(it.food)+'|'+it.qty+'|'+it.unit;
+        if(!seen.has(key))seen.set(key,Object.assign({},it,{origem:m.name}));
+      }
+    }
+  }
+  return Array.from(seen.values()).slice(0,limit||30);
+};
 /* ── PREPARED FOODS (Pratos prontos & porções) ── */
 const PRATOS=[
   {id:'pr01',n:"Arroz frito com ovo",k:185,p:5.2,c:28.0,f:6.0,note:"porção 150g"},
@@ -237,9 +281,10 @@ const searchLocal=q=>{
   const ALL_TACO=[...TACO,...TACO_EXTRA];
   const rank=list=>list.map(f=>({f,s:matchScore(f.n,words)})).filter(x=>x.s>0)
     .sort((a,b)=>b.s-a.s||a.f.n.length-b.f.n.length).map(x=>x.f);
+  const mf=rank(getMyFoods()).slice(0,4).map(f=>({...f,srcLabel:'Meu',srcCol:C.blue}));
   const tr=rank(ALL_TACO).slice(0,5).map(f=>({...f,srcLabel:'TACO',srcCol:C.ok}));
   const pr=rank(PRATOS).slice(0,4).map(f=>({...f,srcLabel:'Pratos',srcCol:'#F97316'}));
-  return[...tr,...pr];
+  return[...mf,...tr,...pr];
 };
 const calcR=(food,qty,unit)=>{const u={...FU,...FU_PRATOS}[food&&food.id]||{};
   if(unit==='ml')return(qty*(u.ml||1))/100;if(unit==='un')return(qty*(u.un||100))/100;return qty/100;};
@@ -279,6 +324,9 @@ const SVGD={
   reset:'<path d="M3 12a9 9 0 109-9 9 9 0 00-9 6"/><polyline points="3 3 3 9 9 9"/>',
   search:'<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
   image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  star:'<polygon points="12 2.5 15 9 22 9.9 17 14.7 18.2 21.6 12 18.3 5.8 21.6 7 14.7 2 9.9 9 9"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  scale:'<path d="M12 3v18"/><path d="M5 21h14"/><path d="M6 7h12"/><path d="M6 7L3 14h6z"/><path d="M18 7l-3 7h6z"/>',
 };
 function Ic({n,size,col,style}){
   const sz=size||20;
@@ -890,6 +938,16 @@ function Checkin(){
     if(cur.days.indexOf(d)>=0){removeDay(k,d);}else{setPickDay({k,d});}
   };
 
+  const metaWk=getMetas().workoutsWeek||5;
+  const weekCount=useMemo(()=>{
+    const n=new Date(),dow=(n.getDay()+6)%7;let c=0;
+    for(let i=0;i<=dow;i++){
+      const d=new Date();d.setDate(n.getDate()-dow+i);
+      const kk=mkey(d.getFullYear(),d.getMonth());
+      const v=ci[kk]||ls.g('ci:'+kk);
+      if(v&&v.days&&v.days.indexOf(d.getDate())>=0)c++;
+    }
+    return c;},[ci]);
   const checked=getCur(tK).days.indexOf(tD)>=0;
   const streak=useMemo(()=>{let s=0,d=new Date();if(!checked)d.setDate(d.getDate()-1);
     for(let i=0;i<365;i++){const k=mkey(d.getFullYear(),d.getMonth());
@@ -922,17 +980,23 @@ function Checkin(){
           boxShadow:'0 0 20px '+C.accent+'44',display:'inline-flex',alignItems:'center',gap:'8px'}}>
           <${Ic} n="dumbbell" size=${16} col="#fff"/>CHECK-IN HOJE</button>
       </div>`}
-      ${streak>0&&html`<div style=${{marginTop:'14px',display:'flex',justifyContent:'center',gap:'22px'}}>
-        <div style=${{textAlign:'center'}}>
+      <div style=${{marginTop:'14px',display:'flex',justifyContent:'center',gap:'18px'}}>
+        ${streak>0&&html`<div style=${{textAlign:'center'}}>
           <div style=${{fontSize:'20px',fontWeight:900,color:C.accent}}>${streak}</div>
           <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px'}}>DIA${streak>1?'S':''} SEGUIDO${streak>1?'S':''}</div>
+        </div>`}
+        ${streak>0&&html`<div style=${{width:'1px',background:C.border}}/>`}
+        <div style=${{textAlign:'center'}}>
+          <div style=${{fontSize:'20px',fontWeight:900,color:weekCount>=metaWk?C.ok:C.text}}>
+            ${weekCount}<span style=${{fontSize:'12px',color:C.muted,fontWeight:700}}>/${metaWk}</span></div>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px'}}>ESTA SEMANA</div>
         </div>
         <div style=${{width:'1px',background:C.border}}/>
         <div style=${{textAlign:'center'}}>
           <div style=${{fontSize:'20px',fontWeight:900}}>${vmCt}</div>
           <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px'}}>ESTE MÊS</div>
         </div>
-      </div>`}
+      </div>
     </div>
 
     <div style=${{background:C.s1,borderRadius:'14px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
@@ -989,6 +1053,52 @@ function Checkin(){
   </div>`;}
 
 /* ── TAB PESO ── */
+function MetaPeso({ws}){
+  const mt=getMetas();
+  const cur=ws.length?ws[ws.length-1].kg:null;
+  const start=mt.startKg!=null?mt.startKg:(ws.length?ws[0].kg:null);
+  if(mt.targetKg==null||cur==null||start==null)return null;
+  const total=mt.targetKg-start,done=cur-start;
+  const pct=total!==0?Math.max(0,Math.min(100,(done/total)*100)):0;
+  const falta=f2(mt.targetKg-cur);
+  const alvo=Number(mt.weeklyKg)||0;
+  const real=realWeeklyRate(28);
+  const semanas=alvo!==0&&falta/alvo>0?Math.ceil(falta/alvo):null;
+  const semanasReal=real&&real!==0&&falta/real>0?Math.ceil(falta/real):null;
+  const ok=real!=null&&alvo!==0?(alvo>0?real>=alvo*0.7:real<=alvo*0.7):null;
+  const rc=ok===null?C.muted:ok?C.ok:C.amber;
+  return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
+      <span style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',
+        display:'flex',alignItems:'center',gap:'6px'}}>
+        <${Ic} n="target" size=${12} col=${C.muted}/>Meta de peso</span>
+      <span style=${{fontSize:'10px',fontWeight:800,color:C.accent}}>${Math.round(pct)}%</span>
+    </div>
+    <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'6px'}}>
+      <span style=${{fontSize:'10px',color:C.muted}}>${start.toFixed(1)} kg</span>
+      <span style=${{fontSize:'19px',fontWeight:900,color:C.text}}>${cur.toFixed(1)} kg</span>
+      <span style=${{fontSize:'10px',color:C.ok,fontWeight:700}}>${mt.targetKg.toFixed(1)} kg</span>
+    </div>
+    <div style=${{height:'7px',background:C.bg,borderRadius:'4px',overflow:'hidden',marginBottom:'10px'}}>
+      <div style=${{width:pct+'%',height:'100%',background:'linear-gradient(90deg,'+C.accent+','+C.ok+')',
+        borderRadius:'4px',transition:'width .3s'}}/>
+    </div>
+    <div style=${{display:'flex',gap:'8px'}}>
+      ${[['Faltam',(falta>0?'+':'')+Math.abs(falta).toFixed(1)+' kg',C.text],
+         ['Meta/sem',(alvo>0?'+':'')+alvo+' kg',C.accent],
+         ['Ritmo real',real==null?'—':(real>0?'+':'')+real.toFixed(2)+' kg',rc]].map((s,i)=>
+        html`<div key=${i} style=${{flex:1,background:C.bg,borderRadius:'8px',padding:'8px 6px',textAlign:'center'}}>
+          <div style=${{fontSize:'12px',fontWeight:900,color:s[2]}}>${s[1]}</div>
+          <div style=${{fontSize:'7px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginTop:'2px'}}>${s[0]}</div>
+        </div>`)}
+    </div>
+    ${(semanas||semanasReal)&&html`<div style=${{fontSize:'9px',color:C.dim,marginTop:'9px',lineHeight:'1.6'}}>
+      ${semanas?'No ritmo da meta: ~'+semanas+' semana'+(semanas!==1?'s':'')+'.':''}
+      ${semanasReal?' No ritmo atual: ~'+semanasReal+' semana'+(semanasReal!==1?'s':'')+'.':''}
+      ${real!=null&&ok===false?' Ritmo abaixo da meta semanal.':''}
+    </div>`}
+  </div>`;}
+
 function Peso(){
   const [ptab,setPtab]=useState('registro');
   const [ws,setWs]=useState([]);const [inp,setInp]=useState('');const [remind,setRemind]=useState(false);
@@ -1019,6 +1129,7 @@ function Peso(){
       <div><div style=${{fontSize:'11px',fontWeight:700,color:C.blue}}>Hora de pesar!</div>
         <div style=${{fontSize:'10px',color:C.muted}}>${ws.length===0?'Registre seu primeiro peso':'Mais de 7 dias sem registro'}</div></div>
     </div>`}
+    <${MetaPeso} ws=${ws}/>
     <div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.border}}>
       <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'8px'}}>Registrar peso</div>
       <div style=${{display:'flex',gap:'7px'}}>
@@ -1115,6 +1226,9 @@ function Macros(){
   const save=up=>{const cur=ls.g(k)||{};setMeals(up);ls.s(k,{meals:up,autoFillDone:cur.autoFillDone||false});};
   const totals=sumM(meals);
   const goals=ls.g('goals')||GOALS;
+  const mgOn=mealGoalsOn(),mDist=getMealDist();
+  const mealGoalK=nm=>mgOn&&Number(mDist[nm])>0?Math.round(goals.kcal*Number(mDist[nm])/100):null;
+  const pendentes=mgOn?MEAL_OPTIONS.filter(m=>Number(mDist[m])>0&&!meals.some(x=>x.name===m)):[];
 
   // Repetir alimentação de ontem: copia todas as refeições do dia anterior para hoje
   const yData=ls.g(tkey(1));
@@ -1193,6 +1307,14 @@ function Macros(){
             <${Bar} label="Gordura" val=${totals.f} goal=${goals.fat} unit="g" color=${C.amber}/>
           </div>
         </div>
+        ${pendentes.length>0&&html`<div style=${{marginTop:'11px',paddingTop:'9px',borderTop:'1px solid '+C.border}}>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'5px'}}>Ainda faltam hoje</div>
+          <div style=${{display:'flex',flexWrap:'wrap',gap:'5px'}}>
+            ${pendentes.map(m=>html`<span key=${m} style=${{fontSize:'9px',color:C.muted,
+              background:C.bg,border:'1px solid '+C.border,borderRadius:'5px',padding:'3px 7px'}}>
+              ${m} · ${mealGoalK(m)} kcal</span>`)}
+          </div>
+        </div>`}
       </div>
       ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
         background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
@@ -1215,6 +1337,14 @@ function Macros(){
             <span style=${{fontSize:'10px',color:C.purple}}>C ${m.c.toFixed(2)}g</span>
             <span style=${{fontSize:'10px',color:C.amber}}>G ${m.f.toFixed(2)}g</span>
           </div>
+          ${(()=>{const gk=mealGoalK(m.name);if(!gk)return null;
+            const p=(m.k/gk)*100,col=p>=85&&p<=115?C.ok:p<85?C.amber:C.red;
+            return html`<div style=${{marginTop:'6px'}}>
+              <div style=${{height:'3px',background:C.bg,borderRadius:'2px',overflow:'hidden',marginBottom:'3px'}}>
+                <div style=${{width:Math.min(p,100)+'%',height:'100%',background:col,borderRadius:'2px'}}/>
+              </div>
+              <span style=${{fontSize:'8px',color:col,letterSpacing:'.4px'}}>${Math.round(p)}% da meta (${gk} kcal)</span>
+            </div>`;})()}
         </div>
         <div style=${{display:'flex',gap:'6px',alignItems:'center',flexShrink:0}}>
           <button onClick=${()=>setEditMeal({...m})} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
@@ -1524,6 +1654,12 @@ const MEAL_OPTIONS=['Café da manhã','Lanche da manhã','Almoço','Lanche da ta
 
 function AddMeal({onSave,onClose}){
   const [mode,setMode]=useState('search');
+  const [sub,setSub]=useState('todos');
+  const [quick,setQuick]=useState({name:'',k:'',p:'',c:'',f:''});
+  const [recents]=useState(()=>recentFoods(21,30));
+  const [myMeals,setMyMeals]=useState(()=>getMyMeals());
+  const [myFoods,setMyFoods]=useState(()=>getMyFoods());
+  const [flash,setFlash]=useState('');
   const [name,setName]=useState('');
   const [customName,setCustomName]=useState('');
   const [isCustom,setIsCustom]=useState(false);
@@ -1571,9 +1707,23 @@ function AddMeal({onSave,onClose}){
     setSrch('');setSel(null);setQty('');setUnit('g');setShowSugg(false);setResults({taco:[],off:[]});};
 
   const addCustom=()=>{if(!cust.name.trim()||!qty||Number(qty)<=0)return;const q=Number(qty),r=q/100;
-    setItems(p=>[...p,{id:Date.now(),food:cust.name.trim(),qty:q,unit:'g',
-      k:Math.round(cust.k*r),p:f2(cust.p*r),c:f2(cust.c*r),f:f2(cust.f*r)}]);
-    setSrch('');setSel(null);setQty('');setShowC(false);setCust({name:'',k:0,p:0,c:0,f:0});};
+    const food={id:'my_'+Date.now(),n:cust.name.trim(),k:Math.round(Number(cust.k)||0),
+      p:f2(Number(cust.p)||0),c:f2(Number(cust.c)||0),f:f2(Number(cust.f)||0)};
+    saveMyFood(food);setMyFoods(getMyFoods());
+    setItems(p=>[...p,{id:Date.now(),food:food.n,qty:q,unit:'g',
+      k:Math.round(food.k*r),p:f2(food.p*r),c:f2(food.c*r),f:f2(food.f*r)}]);
+    setSrch('');setSel(null);setQty('');setShowC(false);setCust({name:'',k:0,p:0,c:0,f:0});
+    setFlash('Alimento salvo em "Meus alimentos"');setTimeout(()=>setFlash(''),2400);};
+
+  /* ── Recentes / Minhas refeições / Meus alimentos ── */
+  const addRecent=it=>setItems(p=>[...p,Object.assign({},it,{id:Date.now()+p.length})]);
+  const loadMyMeal=mm=>{
+    setItems(p=>[...p,...(mm.items||[]).map((it,i)=>Object.assign({},it,{id:Date.now()+i}))]);
+    if(!name&&mm.mealName&&MEAL_OPTIONS.indexOf(mm.mealName)>=0){setName(mm.mealName);setIsCustom(false);}
+    setSub('todos');};
+  const delMyMeal=id=>{const l=getMyMeals().filter(x=>x.id!==id);ls.s('myMeals',l);setMyMeals(l);};
+  const delMyFood=id=>{const l=getMyFoods().filter(x=>x.id!==id);ls.s('myFoods',l);setMyFoods(l);};
+  const pickMyFood=f=>{setSub('todos');pick(Object.assign({},f,{srcLabel:'Meu',srcCol:C.blue}));};
 
   const totals=sumM(items);
 
@@ -1609,6 +1759,21 @@ function AddMeal({onSave,onClose}){
   const confirmManual=()=>{if(!items.length)return;
     onSave(Object.assign({id:Date.now(),name:finalName||'Refeição',items:items},totals));};
 
+  const confirmQuick=()=>{
+    const kk=Math.round(Number(quick.k)||0),pp=f2(Number(quick.p)||0),cc=f2(Number(quick.c)||0),ff=f2(Number(quick.f)||0);
+    if(!kk&&!pp&&!cc&&!ff)return;
+    onSave({id:Date.now(),name:(quick.name||'').trim()||finalName||'Adição rápida',k:kk,p:pp,c:cc,f:ff});};
+
+  const saveAsMyMeal=()=>{
+    if(!items.length)return;
+    const nm=(window.prompt('Nome para salvar em "Minhas refeições":',finalName||'')||'').trim();
+    if(!nm)return;
+    const t=sumM(items);
+    saveMyMeal({id:Date.now(),name:nm,mealName:isCustom?null:name,
+      items:items.map(x=>Object.assign({},x)),k:t.k,p:t.p,c:t.c,f:t.f});
+    setMyMeals(getMyMeals());
+    setFlash('Salvo em "Minhas refeições"');setTimeout(()=>setFlash(''),2400);};
+
   const SrcBadge=({label,col})=>html`<span style=${{fontSize:'8px',fontWeight:700,color:col,background:col+'18',
     padding:'1px 5px',borderRadius:'3px',marginLeft:'4px',flexShrink:0}}>${label}</span>`;
 
@@ -1621,14 +1786,44 @@ function AddMeal({onSave,onClose}){
       </div>
 
       <div style=${{display:'flex',gap:'4px',background:C.s1,borderRadius:'8px',padding:'3px',marginBottom:'12px'}}>
-        ${[['search','search','Buscar'],['photo','camera','Foto']].map(t=>
+        ${[['search','search','Buscar'],['photo','camera','Foto'],['quick','bolt','Rápido']].map(t=>
           html`<button key=${t[0]} onClick=${()=>{setMode(t[0]);}} style=${{flex:1,padding:'7px 0',border:'none',
             borderRadius:'6px',cursor:'pointer',fontSize:'11px',fontWeight:700,
             background:mode===t[0]?C.accent:'transparent',color:mode===t[0]?'#fff':C.muted,
-            display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+            display:'flex',alignItems:'center',justifyContent:'center',gap:'5px'}}>
             <${Ic} n=${t[1]} size=${13} col=${mode===t[0]?'#fff':C.muted}/>${t[2]}
           </button>`)}
       </div>
+
+      ${flash&&html`<div style=${{fontSize:'10px',color:C.ok,background:C.ok+'14',border:'1px solid '+C.ok+'44',
+        borderRadius:'7px',padding:'7px 10px',marginBottom:'9px',display:'flex',alignItems:'center',gap:'6px'}}>
+        <${Ic} n="check" size=${12} col=${C.ok}/>${flash}</div>`}
+
+      ${mode==='quick'&&html`<div>
+        <div style=${{fontSize:'10px',color:C.dim,marginBottom:'9px',lineHeight:'1.5'}}>
+          Lance direto os macros quando você já sabe os números e não quer detalhar os alimentos.</div>
+        <input value=${quick.name} onInput=${e=>setQuick(p=>({...p,name:e.target.value}))}
+          placeholder="Nome (ex: Marmita da rua)"
+          style=${{width:'100%',padding:'9px 11px',background:C.s1,border:'1px solid '+C.border,
+            borderRadius:'8px',color:C.text,fontSize:'12px',outline:'none',marginBottom:'8px'}}/>
+        <div style=${{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'6px',marginBottom:'10px'}}>
+          ${[['k','Kcal',C.accent],['p','Prot (g)',C.blue],['c','Carb (g)',C.purple],['f','Gord (g)',C.amber]].map(t=>
+            html`<div key=${t[0]}>
+              <div style=${{fontSize:'8px',color:t[2],marginBottom:'2px'}}>${t[1]}</div>
+              <input type="number" step="0.01" value=${quick[t[0]]} placeholder="0"
+                onInput=${e=>setQuick(p=>({...p,[t[0]]:e.target.value}))}
+                style=${{width:'100%',padding:'8px 9px',background:C.bg,border:'1px solid '+t[2]+'44',
+                  borderRadius:'6px',color:t[2],fontSize:'13px',fontWeight:700,outline:'none'}}/>
+            </div>`)}
+        </div>
+        ${(()=>{const kk=Number(quick.k)||0,pp=Number(quick.p)||0,cc=Number(quick.c)||0,ff=Number(quick.f)||0;
+          const calc=Math.round(pp*4+cc*4+ff*9);
+          return calc>0&&kk>0&&Math.abs(calc-kk)>0.12*kk?html`<div style=${{fontSize:'9px',color:C.amber,
+            marginBottom:'9px',lineHeight:'1.5'}}>Os macros somam ~${calc} kcal, diferente das ${kk} kcal informadas.</div>`:null;})()}
+        <button onClick=${confirmQuick} style=${{width:'100%',padding:'12px',background:C.ok,border:'none',
+          borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'1px'}}>
+          SALVAR REFEIÇÃO</button>
+      </div>`}
 
       ${mode==='photo'&&html`<div>
         ${!localStorage.getItem('ak')&&html`<div style=${{fontSize:'10px',color:C.red,padding:'8px 10px',
@@ -1694,6 +1889,15 @@ function AddMeal({onSave,onClose}){
           style=${{width:'100%',padding:'8px 11px',background:C.s1,border:'1px solid '+C.border,
             borderRadius:'8px',color:C.text,fontSize:'11px',outline:'none',marginBottom:'7px'}}/>`}
 
+        <div style=${{display:'flex',gap:'16px',borderBottom:'1px solid '+C.border,marginBottom:'9px'}}>
+          ${[['todos','Todos'],['refeicoes','Minhas refeições'],['alimentos','Meus alimentos']].map(t=>
+            html`<button key=${t[0]} onClick=${()=>setSub(t[0])} style=${{background:'none',border:'none',
+              padding:'0 0 7px',cursor:'pointer',fontSize:'11px',fontWeight:700,
+              color:sub===t[0]?C.text:C.muted,borderBottom:'2px solid '+(sub===t[0]?C.accent:'transparent'),
+              marginBottom:'-1px',whiteSpace:'nowrap'}}>${t[1]}</button>`)}
+        </div>
+
+        ${sub==='todos'&&html`<div>
         <div style=${{position:'relative',marginBottom:'7px'}}>
           <input value=${srch} onInput=${e=>onSrch(e.target.value)} placeholder="Buscar alimento..."
             style=${{width:'100%',padding:'9px 36px 9px 11px',background:C.s1,border:'1px solid '+C.border,
@@ -1774,6 +1978,70 @@ function AddMeal({onSave,onClose}){
             borderRadius:'6px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Adicionar</button>
         </div>`}
 
+        ${!srch&&!showC&&recents.length>0&&html`<div style=${{background:C.s1,borderRadius:'11px',
+          padding:'10px 11px',marginBottom:'8px',border:'1px solid '+C.border}}>
+          <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'7px'}}>Registrado recentemente</div>
+          ${recents.slice(0,8).map((it,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',
+            justifyContent:'space-between',gap:'8px',padding:'7px 0',
+            borderTop:i>0?'1px solid '+C.border+'88':'none'}}>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'11px',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${it.food}</div>
+              <div style=${{fontSize:'9px',color:C.muted}}>${it.k} kcal · ${it.qty}${it.unit}${it.origem?' · '+it.origem:''}</div>
+            </div>
+            <button onClick=${()=>addRecent(it)} style=${{background:C.accent+'18',border:'none',
+              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+          </div>`)}
+        </div>`}
+        ${!srch&&!showC&&recents.length===0&&html`<div style=${{textAlign:'center',padding:'18px 0',
+          fontSize:'10px',color:C.dim}}>Sem alimentos recentes ainda — busque um acima.</div>`}
+        </div>`}
+
+        ${sub==='refeicoes'&&html`<div style=${{marginBottom:'8px'}}>
+          ${myMeals.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
+            <${Ic} n="star" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
+            <div style=${{fontSize:'10px',color:C.muted,lineHeight:'1.6'}}>
+              Nenhuma refeição salva.<br/>Monte os itens na aba Todos e toque em "Salvar como minha refeição".</div>
+          </div>`}
+          ${myMeals.map(mm=>html`<div key=${mm.id} style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',
+            marginBottom:'6px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'8px'}}>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'11px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${mm.name}</div>
+              <div style=${{fontSize:'9px',color:C.muted,marginTop:'2px'}}>
+                ${mm.k} kcal · P${mm.p.toFixed(1)} C${mm.c.toFixed(1)} G${mm.f.toFixed(1)} · ${(mm.items||[]).length} item${(mm.items||[]).length!==1?'s':''}</div>
+            </div>
+            <button onClick=${()=>delMyMeal(mm.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+              <${Ic} n="trash" size=${13} col=${C.dim}/></button>
+            <button onClick=${()=>loadMyMeal(mm)} style=${{background:C.accent+'18',border:'none',
+              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+          </div>`)}
+        </div>`}
+
+        ${sub==='alimentos'&&html`<div style=${{marginBottom:'8px'}}>
+          ${myFoods.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
+            <${Ic} n="utensils" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
+            <div style=${{fontSize:'10px',color:C.muted,lineHeight:'1.6'}}>
+              Nenhum alimento próprio.<br/>Todo alimento cadastrado manualmente vem parar aqui.</div>
+          </div>`}
+          ${myFoods.map(f=>html`<div key=${f.id} style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',
+            marginBottom:'6px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'8px'}}>
+            <div onClick=${()=>pickMyFood(f)} style=${{flex:1,minWidth:0,cursor:'pointer'}}>
+              <div style=${{fontSize:'11px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</div>
+              <div style=${{fontSize:'9px',color:C.muted,marginTop:'2px'}}>
+                ${f.k} kcal · P${f.p}g C${f.c}g G${f.f}g / 100g</div>
+            </div>
+            <button onClick=${()=>delMyFood(f.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
+              <${Ic} n="trash" size=${13} col=${C.dim}/></button>
+            <button onClick=${()=>pickMyFood(f)} style=${{background:C.accent+'18',border:'none',
+              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+          </div>`)}
+        </div>`}
+
         ${items.length>0&&html`<div style=${{background:C.s1,borderRadius:'9px',padding:'9px',marginBottom:'8px'}}>
           ${items.map(item=>html`<div key=${item.id} style=${{display:'flex',justifyContent:'space-between',
             alignItems:'center',marginBottom:'4px'}}>
@@ -1794,15 +2062,28 @@ function AddMeal({onSave,onClose}){
           </div>
         </div>`}
 
-        ${items.length>0&&html`<button onClick=${confirmManual} style=${{width:'100%',padding:'12px',background:C.ok,
-          border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'1px'}}>
-          SALVAR REFEIÇÃO</button>`}
+        ${items.length>0&&html`<div>
+          <button onClick=${confirmManual} style=${{width:'100%',padding:'12px',background:C.ok,
+            border:'none',borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:900,cursor:'pointer',letterSpacing:'1px'}}>
+            SALVAR REFEIÇÃO</button>
+          <button onClick=${saveAsMyMeal} style=${{width:'100%',padding:'9px',background:'none',
+            border:'1px solid '+C.border,borderRadius:'8px',color:C.muted,fontSize:'10px',fontWeight:700,
+            cursor:'pointer',marginTop:'6px',display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+            <${Ic} n="star" size=${12} col=${C.muted}/>SALVAR COMO MINHA REFEIÇÃO</button>
+        </div>`}
       </div>`}
     </div>
   </div>`;}
 
 /* ── SETTINGS ── */
 const DEF_RATIOS={protein:GOALS.protein/GOALS.kcal,carbs:GOALS.carbs/GOALS.kcal,fat:GOALS.fat/GOALS.kcal};
+const inpS={padding:'8px 10px',background:C.bg,border:'1px solid '+C.border,
+  borderRadius:'7px',color:C.text,fontSize:'12px',fontWeight:700,outline:'none'};
+function Row({label,children}){
+  return html`<div style=${{display:'flex',alignItems:'center',
+    justifyContent:'space-between',gap:'10px',padding:'9px 0',borderBottom:'1px solid '+C.border}}>
+    <span style=${{fontSize:'11px',color:C.muted,flexShrink:0}}>${label}</span>
+    <div style=${{display:'flex',alignItems:'center',gap:'6px'}}>${children}</div></div>`;}
 function Settings({onClose}){
   const [k,setK]=useState(()=>localStorage.getItem('ak')||'');
   const sg=ls.g('goals')||{};
@@ -1815,6 +2096,36 @@ function Settings({onClose}){
   const [autoF,setAutoF]=useState(()=>sg.autoFat!==false);
   const prevKcal=useRef(Number(sg.kcal||GOALS.kcal));
   const [evolveWeeks,setEvolveWeeks]=useState(()=>ls.g('evolveWeeks')||6);
+
+  /* ── Metas de peso / condicionamento ── */
+  const mt=getMetas();
+  const wlog=ls.g('wlog')||[];
+  const [startKg,setStartKg]=useState(()=>mt.startKg!=null?mt.startKg:(wlog.length?wlog[0].kg:''));
+  const [startDate,setStartDate]=useState(()=>mt.startDate||(wlog.length?wlog[0].date:''));
+  const [targetKg,setTargetKg]=useState(()=>mt.targetKg!=null?mt.targetKg:'');
+  const [weeklyKg,setWeeklyKg]=useState(()=>String(mt.weeklyKg));
+  const [workoutsWeek,setWorkoutsWeek]=useState(()=>mt.workoutsWeek);
+  const curKg=currentKg();
+  const useFirstLog=()=>{if(!wlog.length)return;setStartKg(wlog[0].kg);setStartDate(wlog[0].date);};
+
+  /* ── Metas de kcal por refeição ── */
+  const [mgOn,setMgOn]=useState(()=>mealGoalsOn());
+  const [dist,setDist]=useState(()=>getMealDist());
+  const [mgOpen,setMgOpen]=useState(false);
+  const distTotal=MEAL_OPTIONS.reduce((a,m)=>a+(Number(dist[m])||0),0);
+  const setPct=(m,v)=>setDist(p=>Object.assign({},p,{[m]:v===''?'':Number(v)}));
+  const normalizeDist=()=>{
+    if(!distTotal)return;
+    const nd={};let acc=0;const keys=MEAL_OPTIONS.filter(m=>Number(dist[m])>0);
+    keys.forEach((m,i)=>{
+      const v=i===keys.length-1?100-acc:Math.round((Number(dist[m])/distTotal)*100);
+      nd[m]=v;acc+=v;});
+    MEAL_OPTIONS.forEach(m=>{if(nd[m]===undefined)nd[m]=0;});
+    setDist(nd);
+  };
+  const WEEKLY_OPTS=[['1','Ganhar 1 kg por semana'],['0.75','Ganhar 0,75 kg por semana'],
+    ['0.5','Ganhar 0,5 kg por semana'],['0.25','Ganhar 0,25 kg por semana'],['0','Manter o peso'],
+    ['-0.25','Perder 0,25 kg por semana'],['-0.5','Perder 0,5 kg por semana'],['-0.75','Perder 0,75 kg por semana'],['-1','Perder 1 kg por semana']];
 
   // Ao alterar kcal, os macros ainda em modo "auto" reescalam proporcionalmente
   const onKcalInput=v=>{
@@ -1841,8 +2152,15 @@ function Settings({onClose}){
     ls.s('goals',{kcal:Number(kcal),protein:Number(prot),carbs:Number(carb),fat:Number(fat),
       autoProt:autoP,autoCarbs:autoC,autoFat:autoF});
     ls.s('evolveWeeks',Number(evolveWeeks)||6);
+    ls.s('metas',{startKg:startKg===''?null:Number(startKg),startDate:startDate||null,
+      targetKg:targetKg===''?null:Number(targetKg),weeklyKg:Number(weeklyKg),
+      workoutsWeek:Number(workoutsWeek)||5});
+    ls.s('mealGoalsOn',mgOn);
+    const cleanDist={};MEAL_OPTIONS.forEach(m=>{cleanDist[m]=Number(dist[m])||0;});
+    ls.s('mealDist',cleanDist);
     onClose();
   };
+
 
   const FIELDS=[
     {label:'Kcal',val:kcal,onIn:onKcalInput,col:C.accent,auto:null},
@@ -1860,6 +2178,55 @@ function Settings({onClose}){
         <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
       </div>
 
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'2px'}}>Metas de peso</div>
+      <div style=${{marginBottom:'14px'}}>
+        <${Row} label="Peso inicial">
+          <input type="number" step="0.1" value=${startKg} onInput=${e=>setStartKg(e.target.value)}
+            style=${Object.assign({},inpS,{width:'62px',textAlign:'center',color:C.accent})}/>
+          <span style=${{fontSize:'10px',color:C.muted}}>kg</span>
+          <input type="date" value=${startDate} onInput=${e=>setStartDate(e.target.value)}
+            style=${Object.assign({},inpS,{fontSize:'10px',fontWeight:600,padding:'7px 6px',width:'112px'})}/>
+        <//>
+        ${wlog.length>0&&html`<div onClick=${useFirstLog} style=${{fontSize:'9px',color:C.blue,
+          cursor:'pointer',textDecoration:'underline',padding:'5px 0 0',textAlign:'right'}}>
+          usar 1º registro (${wlog[0].kg.toFixed(1)} kg · ${ptDate(wlog[0].date)})</div>`}
+        <${Row} label="Peso atual">
+          <span style=${{fontSize:'13px',fontWeight:900,color:curKg?C.text:C.dim}}>
+            ${curKg?curKg.toFixed(1)+' kg':'sem registro'}</span>
+        <//>
+        <${Row} label="Meta de peso">
+          <input type="number" step="0.1" value=${targetKg} onInput=${e=>setTargetKg(e.target.value)}
+            placeholder="80" style=${Object.assign({},inpS,{width:'62px',textAlign:'center',color:C.ok})}/>
+          <span style=${{fontSize:'10px',color:C.muted}}>kg</span>
+        <//>
+        <div style=${{padding:'9px 0'}}>
+          <div style=${{fontSize:'11px',color:C.muted,marginBottom:'5px'}}>Meta semanal</div>
+          <select value=${weeklyKg} onChange=${e=>setWeeklyKg(e.target.value)}
+            style=${{width:'100%',padding:'8px 10px',background:C.bg,border:'1px solid '+C.border,
+              borderRadius:'7px',color:Number(weeklyKg)>0?C.accent:Number(weeklyKg)<0?C.blue:C.text,
+              fontSize:'11px',fontWeight:700,outline:'none',WebkitAppearance:'none',appearance:'none',
+              backgroundImage:`url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23556070' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E")`,
+              backgroundRepeat:'no-repeat',backgroundPosition:'right 11px center'}}>
+            ${WEEKLY_OPTS.map(o=>html`<option key=${o[0]} value=${o[0]} style=${{background:C.s1,color:C.text}}>${o[1]}</option>`)}
+          </select>
+          ${targetKg!==''&&curKg&&Number(weeklyKg)!==0&&(()=>{
+            const falta=Number(targetKg)-curKg, wk=Number(weeklyKg);
+            const semanas=falta/wk;
+            return semanas>0?html`<div style=${{fontSize:'9px',color:C.dim,marginTop:'5px'}}>
+              Faltam ${Math.abs(f2(falta))} kg · ~${Math.ceil(semanas)} semanas nesse ritmo</div>`
+              :html`<div style=${{fontSize:'9px',color:C.amber,marginTop:'5px'}}>
+              A meta semanal está no sentido oposto à meta de peso.</div>`;})()}
+        </div>
+      </div>
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'2px'}}>Metas de condicionamento físico</div>
+      <div style=${{marginBottom:'14px'}}>
+        <${Row} label="Treinos / semana">
+          <input type="number" min="1" max="7" value=${workoutsWeek} onInput=${e=>setWorkoutsWeek(e.target.value)}
+            style=${Object.assign({},inpS,{width:'56px',textAlign:'center',color:C.accent})}/>
+        <//>
+      </div>
+
       <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Meta calórica diária</div>
       <div style=${{fontSize:'9px',color:C.dim,marginBottom:'7px',lineHeight:'1.5'}}>
         Proteína, carboidratos e gordura acompanham a caloria proporcionalmente. Editar um deles manualmente trava (destrava tocando em "restaurar").</div>
@@ -1875,6 +2242,51 @@ function Settings({onClose}){
             style=${{width:'100%',padding:'7px 9px',background:C.bg,border:'1px solid '+t.col+'44',
               borderRadius:'6px',color:C.text,fontSize:'12px',fontWeight:700,outline:'none'}}/>
         </div>`)}
+      </div>
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Metas de calorias por refeição</div>
+      <div style=${{background:C.bg,borderRadius:'9px',padding:'10px 11px',marginBottom:'14px',border:'1px solid '+C.border}}>
+        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px'}}>
+          <div style=${{flex:1,minWidth:0}}>
+            <div style=${{fontSize:'11px',fontWeight:700}}>Distribuir a kcal do dia</div>
+            <div style=${{fontSize:'9px',color:C.dim,marginTop:'2px'}}>Mostra a meta de cada refeição na aba Macros</div>
+          </div>
+          <div onClick=${()=>setMgOn(v=>!v)} style=${{width:'38px',height:'21px',borderRadius:'11px',flexShrink:0,
+            background:mgOn?C.ok:C.border,cursor:'pointer',position:'relative',transition:'background .15s'}}>
+            <div style=${{position:'absolute',top:'2px',left:mgOn?'19px':'2px',width:'17px',height:'17px',
+              borderRadius:'50%',background:'#fff',transition:'left .15s'}}/>
+          </div>
+        </div>
+        ${mgOn&&html`<div style=${{marginTop:'10px',borderTop:'1px solid '+C.border,paddingTop:'8px'}}>
+          <div onClick=${()=>setMgOpen(v=>!v)} style=${{display:'flex',justifyContent:'space-between',
+            alignItems:'center',cursor:'pointer',marginBottom:mgOpen?'8px':0}}>
+            <span style=${{fontSize:'10px',color:C.muted}}>Distribuição</span>
+            <span style=${{fontSize:'10px',fontWeight:800,color:distTotal===100?C.ok:C.amber}}>
+              ${distTotal}% ${mgOpen?'▲':'▼'}</span>
+          </div>
+          ${mgOpen&&html`<div>
+            ${MEAL_OPTIONS.map(m=>{const pct=Number(dist[m])||0;
+              return html`<div key=${m} style=${{display:'flex',alignItems:'center',gap:'7px',marginBottom:'5px'}}>
+                <span style=${{fontSize:'10px',flex:1,minWidth:0,color:pct>0?C.text:C.dim,
+                  overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${m}</span>
+                <input type="number" min="0" max="100" value=${dist[m]} onInput=${e=>setPct(m,e.target.value)}
+                  style=${Object.assign({},inpS,{width:'50px',textAlign:'center',fontSize:'11px',padding:'5px 4px'})}/>
+                <span style=${{fontSize:'9px',color:C.muted,width:'12px'}}>%</span>
+                <span style=${{fontSize:'10px',fontWeight:700,color:pct>0?C.accent:C.dim,width:'54px',textAlign:'right'}}>
+                  ${Math.round((Number(kcal)||0)*pct/100)} kcal</span>
+              </div>`;})}
+            <div style=${{display:'flex',gap:'6px',marginTop:'8px'}}>
+              <button onClick=${normalizeDist} style=${{flex:1,padding:'7px',background:'none',
+                border:'1px solid '+C.border,borderRadius:'6px',color:C.muted,fontSize:'10px',
+                fontWeight:700,cursor:'pointer'}}>Normalizar p/ 100%</button>
+              <button onClick=${()=>setDist(Object.assign({},MEAL_DIST_DEF))} style=${{flex:1,padding:'7px',
+                background:'none',border:'1px solid '+C.border,borderRadius:'6px',color:C.muted,
+                fontSize:'10px',fontWeight:700,cursor:'pointer'}}>Padrão</button>
+            </div>
+            ${distTotal!==100&&html`<div style=${{fontSize:'9px',color:C.amber,marginTop:'6px'}}>
+              A soma está em ${distTotal}% — as metas por refeição vão somar ${Math.round((Number(kcal)||0)*distTotal/100)} kcal.</div>`}
+          </div>`}
+        </div>`}
       </div>
 
       <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'5px'}}>Aviso de evolução do treino</div>
