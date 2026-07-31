@@ -43,7 +43,7 @@ input,button,select,textarea{font-family:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
-const BUILD='2026.07.31-2';
+const BUILD='2026.07.31-8';
 const {h,render}=preact;
 const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
 const html=htm.bind(h);
@@ -126,7 +126,35 @@ const WD_DEFAULT=[
        {n:"Prancha lateral + elevação de pernas",d:"3 rounds",note:"variação lateral"}],
    rest:["90–120s compostos","60s isoladores"]},
 ];
-const TAGC={PUSH:"#FF6B35",PULL:"#4C9EEB",LEGS:"#F87171"};
+const TAGC={PUSH:"#FF6B35",PULL:"#4C9EEB",LEGS:"#F87171",UPPER:"#A78BFA",LOWER:"#34D399",FULL:"#F59E0B"};
+const tagDim=col=>{const h=col.replace('#','');const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);return`rgba(${r},${g},${b},.1)`;};
+const TAG_OPTIONS=Object.keys(TAGC).map(t=>({tag:t,col:TAGC[t]}));
+/* Cada dia tem sua PRÓPRIA cor (day.col), independente da tag/grupo muscular — é assim que
+   o calendário do check-in consegue distinguir visualmente, por exemplo, dois dias de "PUSH"
+   diferentes. A tag continua sendo só o rótulo textual do grupo muscular. */
+const DAY_PALETTE=['#FF6B35','#4C9EEB','#A78BFA','#34D399','#F87171','#F59E0B','#22D3EE','#EC4899','#FB923C','#818CF8'];
+const nextDayColor=existing=>{
+  const used=new Set(existing.filter(Boolean));
+  return DAY_PALETTE.find(c=>!used.has(c))||DAY_PALETTE[existing.length%DAY_PALETTE.length];
+};
+/* Programa de treino: agora é uma lista de dias totalmente editável (adicionar, remover,
+   reordenar), com id estável — não depende mais de um array fixo de 5 dias PPL. */
+const DEFAULT_PROGRAM=WD_DEFAULT.map((d,i)=>({id:'d'+(i+1),title:d.title,tag:d.tag,col:d.col,rest:d.rest,ex:d.ex}));
+const getProgram=()=>{
+  let p=ls.g('program');
+  if(!p||!p.length)return DEFAULT_PROGRAM;
+  let changed=false;
+  const usedCols=new Set(p.filter(d=>d.col).map(d=>d.col));
+  p=p.map(d=>{
+    if(d.col)return d;
+    changed=true;
+    const col=DAY_PALETTE.find(c=>!usedCols.has(c))||DAY_PALETTE[usedCols.size%DAY_PALETTE.length];
+    usedCols.add(col);
+    return Object.assign({},d,{col});
+  });
+  if(changed)ls.s('program',p); // migra programas salvos antes desta versão (só tinham tag)
+  return p;
+};
 
 /* ── FOODS TACO ── */
 const TACO=[
@@ -350,13 +378,14 @@ const SVGD={
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   scale:'<path d="M12 3v18"/><path d="M5 21h14"/><path d="M6 7h12"/><path d="M6 7L3 14h6z"/><path d="M18 7l-3 7h6z"/>',
   back:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  play:'<circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16" fill="currentColor" stroke="none"/>',
   chevron:'<polyline points="6 9 12 15 18 9"/>',
 };
 function Ic({n,size,col,style}){
   const sz=size||20;
   return html`<svg width=${sz} height=${sz} viewBox="0 0 24 24" fill="none"
     stroke=${col||'currentColor'} stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-    style=${Object.assign({display:'inline-block',flexShrink:0,verticalAlign:'middle'},style||{})}
+    style=${Object.assign({display:'inline-block',flexShrink:0,verticalAlign:'middle'},col?{color:col}:{},style||{})}
     dangerouslySetInnerHTML=${{__html:SVGD[n]||''}}/>`;
 }
 
@@ -610,10 +639,52 @@ function Projecao({weights}){
 }
 
 /* ── TAB TREINO ── */
+/* ── ARRASTAR PARA REORDENAR ── segura no ícone ☰ e arrasta pra cima/baixo.
+   Troca de posição ao vivo assim que o dedo cruza o meio do item vizinho. */
+function useDragReorder(list,setList,onDone){
+  const rowRefs=useRef([]);
+  const curIdx=useRef(null);
+  const [dragIdx,setDragIdx]=useState(null);
+  rowRefs.current=[];
+  const setRowRef=i=>el=>{rowRefs.current[i]=el;};
+  const start=i=>e=>{
+    e.preventDefault();e.stopPropagation();
+    curIdx.current=i;setDragIdx(i);
+    const move=ev=>{
+      const y=ev.touches?ev.touches[0].clientY:ev.clientY;
+      let ni=curIdx.current;
+      rowRefs.current.forEach((el,idx)=>{
+        if(!el)return;
+        const r=el.getBoundingClientRect(),mid=r.top+r.height/2;
+        if(idx<curIdx.current&&y<mid)ni=Math.min(ni,idx);
+        if(idx>curIdx.current&&y>mid)ni=Math.max(ni,idx);
+      });
+      if(ni!==curIdx.current){
+        setList(prev=>{const next=prev.slice();const[it]=next.splice(curIdx.current,1);next.splice(ni,0,it);return next;});
+        curIdx.current=ni;setDragIdx(ni);
+      }
+    };
+    const end=()=>{
+      window.removeEventListener('pointermove',move);
+      window.removeEventListener('pointerup',end);
+      curIdx.current=null;setDragIdx(null);
+      if(onDone)onDone();
+    };
+    window.addEventListener('pointermove',move);
+    window.addEventListener('pointerup',end);
+  };
+  return{setRowRef,dragIdx,start};
+}
+const DragHandle=({onPointerDown,active})=>html`<div onPointerDown=${onPointerDown}
+  style=${{padding:'8px 4px',cursor:'grab',touchAction:'none',color:active?C.accent:C.dim,
+    flexShrink:0,display:'flex',alignItems:'center'}}>
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+</div>`;
+
 function Treino(){
-  const [open,setOpen]=useState(null);
-  const [editDay,setEditDay]=useState(null);
-  const [exercises,setExercises]=useState(()=>ls.g('exercises')||{});
+  const [program,setProgram]=useState(()=>getProgram());
+  const [activeId,setActiveId]=useState(()=>program[0]?program[0].id:null);
+  const [editDayId,setEditDayId]=useState(null);
   const [progStart,setProgStart]=useState(()=>{
     let s=ls.g('programStart');
     if(!s){s=today();ls.s('programStart',s);}
@@ -621,21 +692,30 @@ function Treino(){
   });
   const [progVersion,setProgVersion]=useState(()=>ls.g('programVersion')||1);
   const [showEvolve,setShowEvolve]=useState(false);
-  const getEx=day=>exercises[day]||WD_DEFAULT.find(d=>d.n===day).ex;
 
-  const saveEx=(dayN,exList)=>{
-    const next=Object.assign({},exercises,{[dayN]:exList});
-    setExercises(next);ls.s('exercises',next);setEditDay(null);
-  };
-  const resetEx=dayN=>{
-    const next=Object.assign({},exercises);delete next[dayN];
-    setExercises(next);ls.s('exercises',next);setEditDay(null);
-  };
+  useEffect(()=>{
+    ls.s('program',program);
+    if(!program.find(d=>d.id===activeId))setActiveId(program[0]?program[0].id:null);
+  },[program]);
+
   const restartCount=()=>{const d=today();ls.s('programStart',d);setProgStart(d);};
+  const delDay=id=>{
+    if(program.length<=1)return;
+    setProgram(p=>p.filter(d=>d.id!==id));
+  };
+  const addDay=()=>{
+    const t=TAG_OPTIONS[program.length%TAG_OPTIONS.length];
+    const col=nextDayColor(program.map(d=>d.col));
+    const nd={id:'d'+Date.now(),title:'Novo dia',tag:t.tag,col,rest:['90s compostos','60s isoladores'],ex:[]};
+    setProgram(p=>[...p,nd]);
+    setActiveId(nd.id);
+  };
+  const updateDay=(id,patch)=>setProgram(p=>p.map(d=>d.id===id?Object.assign({},d,patch):d));
   const applyEvolution=newPlan=>{
-    const next={...exercises};
-    newPlan.forEach(d=>{if(d&&d.n&&Array.isArray(d.ex)&&d.ex.length)next[d.n]=d.ex;});
-    setExercises(next);ls.s('exercises',next);
+    setProgram(prev=>prev.map((day,i)=>{
+      const p=newPlan.find(x=>x.n===i+1);
+      return(p&&Array.isArray(p.ex)&&p.ex.length)?Object.assign({},day,{ex:p.ex}):day;
+    }));
     const d=today();ls.s('programStart',d);setProgStart(d);
     const v=progVersion+1;ls.s('programVersion',v);setProgVersion(v);
     setShowEvolve(false);
@@ -644,151 +724,262 @@ function Treino(){
   const wks=weeksBetween(progStart);
   const thresh=ls.g('evolveWeeks')||6;
   const dueForUpdate=wks>=thresh;
+  const activeDay=program.find(d=>d.id===activeId);
+  const editDayObj=program.find(d=>d.id===editDayId);
+  const ac=activeDay?(activeDay.col||C.accent):C.accent;
 
   return html`<div style=${{padding:'0 14px 20px'}}>
+    <button onClick=${()=>setShowEvolve(true)} style=${{width:'100%',display:'flex',alignItems:'center',
+      justifyContent:'center',gap:'7px',padding:'12px',marginBottom:'8px',
+      background:dueForUpdate?C.amber:C.s1,border:'1px solid '+(dueForUpdate?C.amber:C.border),
+      borderRadius:'11px',color:dueForUpdate?'#000':C.text,fontSize:'12px',fontWeight:800,
+      letterSpacing:'.5px',cursor:'pointer'}}>
+      <${Ic} n="bolt" size=${15} col=${dueForUpdate?'#000':C.accent}/>EVOLUIR TREINO
+    </button>
     <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',
       background:dueForUpdate?C.amber+'14':C.s1,border:'1px solid '+(dueForUpdate?C.amber+'55':C.border),
-      borderRadius:'11px',padding:'10px 12px',marginBottom:'10px'}}>
-      <div style=${{display:'flex',alignItems:'center',gap:'8px',minWidth:0}}>
-        <${Ic} n=${dueForUpdate?'bell':'clock'} size=${15} col=${dueForUpdate?C.amber:C.muted}/>
-        <div style=${{minWidth:0}}>
-          <div style=${{fontSize:'11px',fontWeight:700,color:dueForUpdate?C.amber:C.text}}>
-            ${dueForUpdate?'Hora de evoluir o treino!':'Neste treino há '+wks+' semana'+(wks!==1?'s':'')}
-          </div>
-          <div style=${{fontSize:'9px',color:C.dim}}>
-            ${dueForUpdate?wks+' semanas no programa v'+progVersion+' — considere trocar estímulos':'Programa v'+progVersion+' · aviso em '+thresh+' semanas'}
-          </div>
-        </div>
+      borderRadius:'10px',padding:'8px 11px',marginBottom:'16px'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:'7px',minWidth:0}}>
+        <${Ic} n=${dueForUpdate?'bell':'clock'} size=${13} col=${dueForUpdate?C.amber:C.muted}/>
+        <span style=${{fontSize:'10px',color:dueForUpdate?C.amber:C.muted,fontWeight:dueForUpdate?700:400}}>
+          ${dueForUpdate
+            ?'Hora de evoluir · '+wks+' semana'+(wks!==1?'s':'')+' no mesmo treino'
+            :wks+' semana'+(wks!==1?'s':'')+' neste treino · aviso em '+thresh}
+        </span>
       </div>
       <button onClick=${restartCount} title="Reiniciar contagem" style=${{background:'none',border:'none',
-        color:C.dim,cursor:'pointer',padding:'4px',flexShrink:0}}>
-        <${Ic} n="reset" size=${14} col=${C.dim}/>
+        color:C.dim,cursor:'pointer',padding:'4px',flexShrink:0,display:'flex'}}>
+        <${Ic} n="reset" size=${13} col=${C.dim}/>
       </button>
     </div>
 
-    <button onClick=${()=>setShowEvolve(true)} style=${{width:'100%',display:'flex',alignItems:'center',
-      justifyContent:'center',gap:'7px',padding:'10px',marginBottom:'12px',
-      background:dueForUpdate?C.amber:C.s1,border:'1px solid '+(dueForUpdate?C.amber:C.border),
-      borderRadius:'10px',color:dueForUpdate?'#000':C.text,fontSize:'11px',fontWeight:800,
-      letterSpacing:'.5px',cursor:'pointer'}}>
-      <${Ic} n="bolt" size=${14} col=${dueForUpdate?'#000':C.accent}/>EVOLUIR TREINO
-    </button>
+    <div style=${{display:'flex',gap:'6px',marginBottom:'6px'}}>
+      ${program.map((day,i)=>{
+        const c=day.col||C.muted,isAc=activeId===day.id;
+        return html`<div key=${day.id} onClick=${()=>setActiveId(day.id)} style=${{flex:1,minWidth:0,
+          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:'3px',
+          padding:'13px 2px',borderRadius:'12px',border:'1px solid '+(isAc?c:C.border),
+          background:isAc?c:C.s1,cursor:'pointer',transition:'background .15s'}}>
+          <span style=${{fontSize:'23px',fontWeight:900,color:isAc?'#fff':C.muted,lineHeight:1,letterSpacing:'-.5px'}}>${i+1}</span>
+          <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'1px',color:isAc?'#fff':C.dim,
+            textTransform:'uppercase',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis',maxWidth:'100%'}}>${day.tag}</span>
+        </div>`;
+      })}
+    </div>
 
-    ${WD_DEFAULT.map(day=>{
-      const o=open===day.n,isEditing=editDay===day.n;
-      const exList=getEx(day.n);
-      const isCustom=!!exercises[day.n];
-      return html`<div key=${day.n} style=${{borderRadius:'12px',background:o?day.dim:C.s1,
-        border:'1px solid '+(o?day.col+'55':C.border),borderLeft:'4px solid '+day.col,
-        overflow:'hidden',marginBottom:'8px',transition:'background .2s'}}>
-        <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'13px 14px',cursor:'pointer',userSelect:'none'}}
-          onClick=${()=>{setOpen(o?null:day.n);setEditDay(null);}}>
-          <div style=${{display:'flex',alignItems:'center',gap:'11px'}}>
-            <span style=${{fontSize:'28px',fontWeight:900,color:o?day.col:C.border,lineHeight:1,
-              minWidth:'34px',letterSpacing:'-2px',transition:'color .2s'}}>${pad(day.n)}</span>
-            <div>
-              <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'2.5px',color:TAGC[day.tag],textTransform:'uppercase',display:'block',marginBottom:'2px'}}>${day.tag}</span>
-              <span style=${{fontSize:'12px',fontWeight:700}}>${day.title}</span>
-              ${isCustom&&html`<span style=${{fontSize:'8px',color:day.col,marginLeft:'5px',opacity:.7}}>editado</span>`}
-            </div>
-          </div>
-          <span style=${{color:C.muted,fontSize:'10px',display:'flex',alignItems:'center',gap:'5px'}}>
-            ${exList.length} ex
-            <span style=${{transform:o?'rotate(180deg)':'rotate(0)',transition:'transform .2s',display:'inline-block'}}>▾</span>
-          </span>
+    ${activeDay&&html`<div style=${{marginTop:'18px'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+        <div style=${{minWidth:0}}>
+          <span style=${{fontSize:'9px',fontWeight:700,letterSpacing:'2px',color:ac,textTransform:'uppercase'}}>${activeDay.tag}</span>
+          <div style=${{fontSize:'17px',fontWeight:900,marginTop:'2px'}}>${activeDay.title}</div>
         </div>
+        <button onClick=${()=>setEditDayId(activeDay.id)} title="Editar" style=${{width:'34px',height:'34px',
+          borderRadius:'50%',background:C.s1,border:'1px solid '+C.border,cursor:'pointer',flexShrink:0,
+          display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <${Ic} n="pencil" size=${15} col=${C.muted}/>
+        </button>
+      </div>
 
-        ${o&&!isEditing&&html`<div style=${{padding:'0 14px 12px'}}>
-          <div style=${{height:'1px',background:day.col+'25',marginBottom:'10px'}}/>
-          ${exList.map((ex,i)=>html`<div key=${i} style=${{display:'flex',justifyContent:'space-between',
-            alignItems:'flex-start',gap:'8px',marginBottom:'7px'}}>
-            <div style=${{display:'flex',gap:'6px',flex:1,alignItems:'flex-start'}}>
-              <span style=${{color:day.col,fontSize:'5px',paddingTop:'5px',flexShrink:0}}>●</span>
-              <div>
-                <span style=${{fontSize:'12px',color:'#CDD5DF',lineHeight:'1.3'}}>${ex.n}</span>
-                ${ex.ss&&html`<span style=${{fontSize:'8px',fontWeight:700,color:day.col,background:day.dim,padding:'1px 4px',borderRadius:'3px',marginLeft:'5px'}}>SS</span>`}
-                ${ex.note&&html`<span style=${{display:'block',fontSize:'9px',color:day.col+'88',marginTop:'1px',fontStyle:'italic'}}>${ex.note}</span>`}
-              </div>
-            </div>
-            <div style=${{display:'flex',alignItems:'center',gap:'6px',flexShrink:0}}>
-              <span style=${{fontSize:'10px',fontWeight:700,color:day.col,background:day.dim,padding:'2px 7px',borderRadius:'5px',whiteSpace:'nowrap'}}>${ex.d}</span>
-              <a href=${'https://www.youtube.com/results?search_query='+encodeURIComponent(ex.n+' exercise')}
-                target="_blank" rel="noopener"
-                onClick=${e=>e.stopPropagation()}
-                style=${{color:C.dim,display:'flex',alignItems:'center'}}>
-                <${Ic} n="link" size=${12} col=${C.dim}/>
-              </a>
-            </div>
-          </div>`)}
-          <div style=${{marginTop:'10px',background:C.bg,borderRadius:'6px',padding:'8px 10px',borderLeft:'2px solid '+day.col+'30',marginBottom:'10px'}}>
-            ${day.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',display:'flex',alignItems:'center',gap:'5px'}}>
-              <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
+      <div style=${{background:C.s1,borderRadius:'9px',padding:'9px 11px',borderLeft:'2px solid '+ac,marginBottom:'16px'}}>
+        ${activeDay.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',
+          display:'flex',alignItems:'center',gap:'5px'}}>
+          <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
+      </div>
+
+      ${activeDay.ex.length===0&&html`<div style=${{textAlign:'center',padding:'30px 0',color:C.dim,fontSize:'11px'}}>
+        Nenhum exercício ainda neste dia. Toque em editar para adicionar.</div>`}
+      ${activeDay.ex.map((ex,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',gap:'10px',
+        background:C.s1,border:'1px solid '+C.border,borderRadius:'12px',padding:'12px 13px',marginBottom:'9px'}}>
+        <div style=${{flex:1,minWidth:0}}>
+          <div style=${{fontSize:'14px',fontWeight:800,lineHeight:'1.3'}}>${ex.n}</div>
+          <div style=${{display:'flex',alignItems:'center',gap:'6px',marginTop:'6px',flexWrap:'wrap'}}>
+            <span style=${{fontSize:'10px',fontWeight:700,color:ac,background:tagDim(ac),padding:'2px 7px',borderRadius:'5px'}}>${ex.d}</span>
+            ${ex.ss&&html`<span style=${{fontSize:'8px',fontWeight:700,color:ac,background:tagDim(ac),padding:'1px 5px',borderRadius:'4px'}}>SS</span>`}
+            ${ex.note&&html`<span style=${{fontSize:'9px',fontStyle:'italic',color:C.muted}}>${ex.note}</span>`}
           </div>
-          <button onClick=${e=>{e.stopPropagation();setEditDay(day.n);}} style=${{
-            display:'flex',alignItems:'center',gap:'6px',background:'none',
-            border:'1px solid '+C.border,borderRadius:'7px',padding:'6px 10px',
-            color:C.muted,fontSize:'10px',cursor:'pointer',fontWeight:600}}>
-            <${Ic} n="pencil" size=${12} col=${C.muted}/>Editar exercícios
-          </button>
-        </div>`}
+        </div>
+        <a href=${'https://www.youtube.com/results?search_query='+encodeURIComponent(ex.n+' exercise')}
+          target="_blank" rel="noopener" title="Ver vídeo"
+          style=${{width:'34px',height:'34px',borderRadius:'50%',background:C.blue+'16',
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+          <${Ic} n="play" size=${16} col=${C.blue}/>
+        </a>
+      </div>`)}
+    </div>`}
 
-        ${o&&isEditing&&html`<${EditExercises} day=${day} exList=${exList} isCustom=${isCustom}
-          onSave=${(list)=>saveEx(day.n,list)} onReset=${()=>resetEx(day.n)} onCancel=${()=>setEditDay(null)}/>`}
-      </div>`;
-    })}
-    ${showEvolve&&html`<${EvolveTreino} current=${WD_DEFAULT.map(d=>({n:d.n,title:d.title,tag:d.tag,ex:getEx(d.n)}))}
+    ${editDayObj&&html`<${DayScreen} day=${editDayObj} program=${program} setProgram=${setProgram} addDay=${addDay}
+      onUpdate=${patch=>updateDay(editDayObj.id,patch)}
+      onClose=${()=>setEditDayId(null)}/>`}
+    ${showEvolve&&html`<${EvolveTreino} current=${program.map((d,i)=>({n:i+1,title:d.title,tag:d.tag,ex:d.ex}))}
       onApply=${applyEvolution} onClose=${()=>setShowEvolve(false)}/>`}
   </div>`;}
 
-/* ── EDIT EXERCISES ── */
-function EditExercises({day,exList,isCustom,onSave,onReset,onCancel}){
-  const [list,setList]=useState(()=>exList.map((e,i)=>({...e,_id:i})));
-  const update=(idx,field,val)=>setList(p=>p.map((e,i)=>i===idx?{...e,[field]:val}:e));
-  const remove=idx=>setList(p=>p.filter((_,i)=>i!==idx));
-  const addRow=()=>setList(p=>[...p,{n:'',d:'3×10',note:'',_id:Date.now()}]);
-
-  return html`<div style=${{padding:'0 14px 14px'}} onClick=${e=>e.stopPropagation()}>
-    <div style=${{height:'1px',background:day.col+'25',marginBottom:'10px'}}/>
-    <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px',
-      display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-      <span>Editar exercícios</span>
-      <a href="https://exrx.net" target="_blank" rel="noopener"
-        style=${{color:C.blue,fontSize:'9px',display:'flex',alignItems:'center',gap:'3px',textDecoration:'none'}}>
-        <${Ic} n="link" size=${10} col=${C.blue}/>Referência ExRx
-      </a>
-    </div>
-    ${list.map((ex,i)=>html`<div key=${ex._id} style=${{background:C.bg,borderRadius:'8px',padding:'8px 10px',marginBottom:'6px',border:'1px solid '+C.border}}>
-      <div style=${{display:'flex',gap:'6px',marginBottom:'5px'}}>
-        <input value=${ex.n} onInput=${e=>update(i,'n',e.target.value)} placeholder="Nome do exercício"
-          style=${{flex:1,background:C.s1,border:'1px solid '+C.border,borderRadius:'5px',
-            padding:'6px 8px',color:C.text,fontSize:'11px',outline:'none'}}/>
-        <input value=${ex.d} onInput=${e=>update(i,'d',e.target.value)} placeholder="4×8–10"
-          style=${{width:'72px',background:C.s1,border:'1px solid '+C.border,borderRadius:'5px',
-            padding:'6px 8px',color:day.col,fontSize:'11px',fontWeight:700,outline:'none',textAlign:'center'}}/>
-        <button onClick=${()=>remove(i)} style=${{background:'none',border:'none',color:C.dim,cursor:'pointer',padding:'4px'}}>
-          <${Ic} n="trash" size=${13} col=${C.red+'88'}/>
-        </button>
+/* ── EDITAR DIAS DO PROGRAMA (reordenar por arrastar, excluir, incluir) ── */
+function EditDaysSheet({program,setProgram,addDay,onClose}){
+  const {setRowRef,dragIdx,start}=useDragReorder(program,setProgram);
+  const delDay=id=>{if(program.length<=1)return;setProgram(p=>p.filter(d=>d.id!==id));};
+  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.85)',zIndex:110,
+    display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'18px 16px 36px',width:'100%',
+      maxWidth:'540px',maxHeight:'85vh',overflowY:'auto'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'4px'}}>
+        <span style=${{fontSize:'13px',fontWeight:800}}>Editar dias</span>
+        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
       </div>
-      <input value=${ex.note||''} onInput=${e=>update(i,'note',e.target.value)} placeholder="Observação (opcional)"
-        style=${{width:'100%',background:C.s1,border:'1px solid '+C.border+'88',borderRadius:'5px',
-          padding:'5px 8px',color:C.muted,fontSize:'10px',outline:'none',fontStyle:'italic'}}/>
-    </div>`)}
-    <button onClick=${addRow} style=${{display:'flex',alignItems:'center',gap:'6px',
-      background:C.s1,border:'1px dashed '+C.border,borderRadius:'7px',padding:'7px 10px',
-      color:C.muted,fontSize:'10px',cursor:'pointer',width:'100%',marginBottom:'10px'}}>
-      <${Ic} n="plus" size=${12} col=${C.muted}/>Adicionar exercício
-    </button>
-    <div style=${{display:'flex',gap:'6px'}}>
-      ${isCustom&&html`<button onClick=${onReset} style=${{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:'5px',
-        background:'none',border:'1px solid '+C.border,borderRadius:'7px',padding:'8px',
-        color:C.muted,fontSize:'10px',cursor:'pointer'}}>
-        <${Ic} n="reset" size=${12} col=${C.muted}/>Restaurar padrão
-      </button>`}
-      <button onClick=${onCancel} style=${{flex:1,background:'none',border:'1px solid '+C.border,
-        borderRadius:'7px',padding:'8px',color:C.muted,fontSize:'10px',cursor:'pointer'}}>Cancelar</button>
-      <button onClick=${()=>onSave(list.filter(e=>e.n.trim()))} style=${{flex:2,background:day.col,border:'none',
-        borderRadius:'7px',padding:'8px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+      <div style=${{fontSize:'10px',color:C.dim,marginBottom:'14px'}}>Segure ☰ e arraste para reordenar.</div>
+      ${program.map((day,i)=>{
+        const c=day.col||C.muted,dragging=dragIdx===i;
+        return html`<div key=${day.id} ref=${setRowRef(i)} style=${{display:'flex',alignItems:'center',gap:'9px',
+          background:C.s1,border:'1px solid '+C.border,borderLeft:'4px solid '+c,borderRadius:'11px',
+          padding:'10px 12px',marginBottom:'8px',opacity:dragging?0.5:1,transition:'opacity .1s'}}>
+          <${DragHandle} onPointerDown=${start(i)} active=${dragging}/>
+          <span style=${{fontSize:'17px',fontWeight:900,color:c,minWidth:'22px'}}>${i+1}</span>
+          <div style=${{flex:1,minWidth:0}}>
+            <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'1.5px',color:c,textTransform:'uppercase',display:'block'}}>${day.tag}</span>
+            <span style=${{fontSize:'12px',fontWeight:700}}>${day.title}</span>
+          </div>
+          <button onClick=${()=>delDay(day.id)} disabled=${program.length<=1} style=${{width:'34px',height:'34px',
+            borderRadius:'50%',background:C.red+'14',border:'none',
+            cursor:program.length<=1?'default':'pointer',opacity:program.length<=1?0.3:1,
+            display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <${Ic} n="trash" size=${15} col=${C.red}/>
+          </button>
+        </div>`;
+      })}
+      <button onClick=${addDay} style=${{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+        gap:'6px',padding:'11px',background:C.s1,border:'1px dashed '+C.border,borderRadius:'10px',
+        color:C.muted,fontSize:'11px',fontWeight:700,cursor:'pointer',marginTop:'2px'}}>
+        <${Ic} n="plus" size=${13} col=${C.muted}/>Adicionar dia
+      </button>
+      <button onClick=${onClose} style=${{width:'100%',padding:'11px',background:C.accent,border:'none',
+        borderRadius:'9px',color:'#fff',fontSize:'12px',fontWeight:700,cursor:'pointer',marginTop:'14px'}}>Concluir</button>
     </div>
+  </div>`;}
+
+/* ── TELA CHEIA DE UM DIA DE TREINO ── */
+function DayScreen({day,onUpdate,program,setProgram,addDay,onClose}){
+  const [exList,setExList]=useState(()=>day.ex.map((e,i)=>Object.assign({},e,{_id:i+'-'+Date.now()})));
+  const [editingTitle,setEditingTitle]=useState(false);
+  const [titleVal,setTitleVal]=useState(day.title);
+  const [pickingTag,setPickingTag]=useState(false);
+  const [editingEx,setEditingEx]=useState(null); // _id do exercício em edição inline
+  const [showDaysManager,setShowDaysManager]=useState(false);
+  const {setRowRef,dragIdx,start}=useDragReorder(exList,setExList);
+
+  useEffect(()=>{onUpdate({ex:exList.map(({_id,...rest})=>rest)});},[exList]);
+
+  const saveTitle=()=>{const v=titleVal.trim();if(v)onUpdate({title:v});setEditingTitle(false);};
+  const pickTag=tag=>{onUpdate({tag});setPickingTag(false);};
+  const updateEx=(id,field,val)=>setExList(p=>p.map(e=>e._id===id?Object.assign({},e,{[field]:val}):e));
+  const delEx=id=>setExList(p=>p.filter(e=>e._id!==id));
+  const addEx=()=>{
+    const id='n'+Date.now();
+    setExList(p=>[...p,{n:'Novo exercício',d:'3×10',_id:id}]);
+    setEditingEx(id);
+  };
+  const c=day.col||C.accent;
+
+  return html`<div style=${{position:'fixed',inset:0,background:C.bg,zIndex:100,
+    display:'flex',flexDirection:'column'}}>
+    <div style=${{position:'sticky',top:0,background:C.bg,zIndex:5,borderBottom:'1px solid '+C.border,
+      padding:'14px 15px 12px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0}}>
+      <button onClick=${onClose} style=${{background:'none',border:'none',color:C.text,cursor:'pointer',
+        padding:'2px',display:'flex',alignItems:'center',flexShrink:0}}>
+        <${Ic} n="back" size=${22} col=${C.text}/>
+      </button>
+      <div style=${{flex:1,minWidth:0}}>
+        <div style=${{position:'relative',display:'inline-block'}}>
+          <span onClick=${()=>setPickingTag(v=>!v)} style=${{fontSize:'9px',fontWeight:700,letterSpacing:'2px',
+            color:c,textTransform:'uppercase',cursor:'pointer',textDecoration:'underline dotted'}}>${day.tag}</span>
+          ${pickingTag&&html`<div style=${{position:'absolute',top:'100%',left:0,marginTop:'6px',background:C.s1,
+            border:'1px solid '+C.border,borderRadius:'9px',padding:'8px',zIndex:10,display:'flex',
+            flexWrap:'wrap',gap:'5px',width:'160px',boxShadow:'0 8px 24px rgba(0,0,0,.5)'}}>
+            ${TAG_OPTIONS.map(t=>html`<button key=${t.tag} onClick=${()=>pickTag(t.tag)} style=${{
+              padding:'5px 8px',borderRadius:'6px',border:'1px solid '+t.col+'55',
+              background:t.tag===day.tag?t.col+'22':'none',color:t.col,fontSize:'9px',fontWeight:700,cursor:'pointer'}}>
+              ${t.tag}</button>`)}
+          </div>`}
+        </div>
+        ${editingTitle
+          ?html`<input value=${titleVal} onInput=${e=>setTitleVal(e.target.value)}
+              onKeyDown=${e=>e.key==='Enter'&&saveTitle()} onBlur=${saveTitle} autofocus
+              style=${{display:'block',width:'100%',marginTop:'2px',padding:'4px 0',background:'none',
+                border:'none',borderBottom:'1px solid '+c,color:C.text,fontSize:'17px',fontWeight:900,outline:'none'}}/>`
+          :html`<div onClick=${()=>{setTitleVal(day.title);setEditingTitle(true);}}
+              style=${{fontSize:'17px',fontWeight:900,marginTop:'2px',cursor:'pointer'}}>${day.title}</div>`}
+      </div>
+    </div>
+
+    <div style=${{flex:1,overflowY:'auto',padding:'16px 15px 60px'}}>
+      <div style=${{background:C.s1,borderRadius:'9px',padding:'9px 11px',borderLeft:'2px solid '+c,marginBottom:'18px'}}>
+        ${day.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',display:'flex',alignItems:'center',gap:'5px'}}>
+          <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
+      </div>
+
+      ${exList.length===0&&html`<div style=${{textAlign:'center',padding:'30px 0',color:C.dim,fontSize:'11px'}}>
+        Nenhum exercício ainda neste dia.</div>`}
+      ${exList.map((ex,i)=>{
+        const dragging=dragIdx===i,isEditing=editingEx===ex._id;
+        return html`<div key=${ex._id} ref=${setRowRef(i)} style=${{background:C.s1,border:'1px solid '+C.border,
+          borderRadius:'12px',padding:'11px 12px',marginBottom:'8px',opacity:dragging?0.5:1}}>
+          ${isEditing
+            ?html`<div>
+                <input value=${ex.n} onInput=${e=>updateEx(ex._id,'n',e.target.value)} placeholder="Nome do exercício"
+                  style=${{width:'100%',padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,
+                    borderRadius:'6px',color:C.text,fontSize:'13px',fontWeight:700,outline:'none',marginBottom:'6px'}}/>
+                <div style=${{display:'flex',gap:'6px',marginBottom:'8px'}}>
+                  <input value=${ex.d} onInput=${e=>updateEx(ex._id,'d',e.target.value)} placeholder="4×8–10"
+                    style=${{width:'90px',padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,
+                      borderRadius:'6px',color:c,fontSize:'11px',fontWeight:700,outline:'none',textAlign:'center'}}/>
+                  <input value=${ex.note||''} onInput=${e=>updateEx(ex._id,'note',e.target.value)} placeholder="Observação (opcional)"
+                    style=${{flex:1,padding:'7px 9px',background:C.bg,border:'1px solid '+C.border,
+                      borderRadius:'6px',color:C.muted,fontSize:'10px',fontStyle:'italic',outline:'none'}}/>
+                </div>
+                <div style=${{display:'flex',gap:'6px'}}>
+                  <button onClick=${()=>delEx(ex._id)} title="Excluir exercício" style=${{width:'36px',flexShrink:0,
+                    background:'none',border:'1px solid '+C.border,borderRadius:'7px',cursor:'pointer',
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <${Ic} n="trash" size=${13} col=${C.red}/></button>
+                  <button onClick=${()=>setEditingEx(null)} style=${{flex:1,padding:'8px',background:c,
+                    border:'none',borderRadius:'7px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Concluir</button>
+                </div>
+              </div>`
+            :html`<div style=${{display:'flex',alignItems:'center',gap:'8px'}}>
+                <${DragHandle} onPointerDown=${start(i)} active=${dragging}/>
+                <div style=${{flex:1,minWidth:0}}>
+                  <div style=${{fontSize:'16px',fontWeight:800,lineHeight:'1.3'}}>${ex.n}</div>
+                  <div style=${{display:'flex',alignItems:'center',gap:'6px',marginTop:'6px',flexWrap:'wrap'}}>
+                    <span style=${{fontSize:'10px',fontWeight:700,color:c,background:tagDim(c),padding:'2px 7px',borderRadius:'5px'}}>${ex.d}</span>
+                    ${ex.ss&&html`<span style=${{fontSize:'8px',fontWeight:700,color:c,background:tagDim(c),padding:'1px 5px',borderRadius:'4px'}}>SS</span>`}
+                    ${ex.note&&html`<span style=${{fontSize:'9px',fontStyle:'italic',color:C.muted}}>${ex.note}</span>`}
+                  </div>
+                </div>
+                <div style=${{display:'flex',gap:'6px',flexShrink:0}}>
+                  <a href=${'https://www.youtube.com/results?search_query='+encodeURIComponent(ex.n+' exercise')}
+                    target="_blank" rel="noopener" title="Ver vídeo"
+                    style=${{width:'34px',height:'34px',borderRadius:'50%',background:C.blue+'16',
+                      display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <${Ic} n="play" size=${16} col=${C.blue}/></a>
+                  <button onClick=${()=>setEditingEx(ex._id)} title="Editar" style=${{width:'34px',height:'34px',
+                    borderRadius:'50%',background:C.bg,border:'none',cursor:'pointer',
+                    display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    <${Ic} n="pencil" size=${15} col=${C.muted}/></button>
+                </div>
+              </div>`}
+        </div>`;})}
+      <button onClick=${addEx} style=${{width:'100%',display:'flex',alignItems:'center',justifyContent:'center',
+        gap:'6px',padding:'12px',background:C.s1,border:'1px dashed '+C.border,borderRadius:'10px',
+        color:C.muted,fontSize:'11px',fontWeight:700,cursor:'pointer',marginTop:'4px'}}>
+        <${Ic} n="plus" size=${13} col=${C.muted}/>Adicionar exercício
+      </button>
+      <button onClick=${()=>setShowDaysManager(true)} style=${{width:'100%',display:'flex',alignItems:'center',
+        justifyContent:'center',gap:'6px',padding:'12px',background:C.s1,border:'1px solid '+C.border,
+        borderRadius:'10px',color:C.text,fontSize:'11px',fontWeight:700,cursor:'pointer',marginTop:'16px'}}>
+        <${Ic} n="calendar" size=${13} col=${C.muted}/>Editar dias do programa
+      </button>
+    </div>
+    ${showDaysManager&&html`<${EditDaysSheet} program=${program} setProgram=${setProgram}
+      addDay=${addDay} onClose=${()=>setShowDaysManager(false)}/>`}
   </div>`;}
 
 /* ── EVOLVE TREINO (IA) ── */
@@ -858,11 +1049,12 @@ function EvolveTreino({current,onApply,onClose}){
           Revise dia a dia. Desmarque os dias que você quer manter como estão — só os marcados serão substituídos.
         </div>
         ${plan.map(d=>{
-          const dayInfo=WD_DEFAULT.find(w=>w.n===d.n);
-          const oldEx=current.find(c=>c.n===d.n)?.ex||[];
+          const dayInfo=current.find(w=>w.n===d.n);
+          const dayCol=dayInfo?(dayInfo.col||C.accent):C.accent;
+          const oldEx=dayInfo?.ex||[];
           const on=!!checked[d.n];
           return html`<div key=${d.n} style=${{background:C.s1,borderRadius:'10px',padding:'11px',marginBottom:'8px',
-            border:'1px solid '+(on?(dayInfo?.col||C.accent)+'55':C.border),opacity:on?1:0.55}}>
+            border:'1px solid '+(on?dayCol+'55':C.border),opacity:on?1:0.55}}>
             <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}}>
               <span style=${{fontSize:'11px',fontWeight:800}}>Dia ${d.n} — ${dayInfo?.title||''}</span>
               <label style=${{display:'flex',alignItems:'center',gap:'5px',fontSize:'9px',color:C.muted,cursor:'pointer'}}>
@@ -876,9 +1068,9 @@ function EvolveTreino({current,onApply,onClose}){
                 ${oldEx.map((ex,i)=>html`<div key=${i} style=${{fontSize:'9px',color:C.dim,marginBottom:'3px',lineHeight:'1.3'}}>${ex.n}</div>`)}
               </div>
               <div>
-                <div style=${{fontSize:'8px',color:dayInfo?.col||C.accent,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Novo</div>
+                <div style=${{fontSize:'8px',color:dayCol,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Novo</div>
                 ${(d.ex||[]).map((ex,i)=>html`<div key=${i} style=${{fontSize:'9px',color:'#CDD5DF',marginBottom:'3px',lineHeight:'1.3'}}>
-                  ${ex.n} <span style=${{color:dayInfo?.col||C.accent}}>${ex.d}</span></div>`)}
+                  ${ex.n} <span style=${{color:dayCol}}>${ex.d}</span></div>`)}
               </div>
             </div>
           </div>`;
@@ -896,6 +1088,7 @@ function EvolveTreino({current,onApply,onClose}){
 
 /* ── WORKOUT PICKER ── */
 function WorkoutPicker({onSelect,onClose}){
+  const program=getProgram();
   return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.88)',zIndex:150,
     display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
     <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'18px 16px 52px',width:'100%',maxWidth:'540px'}}>
@@ -904,16 +1097,16 @@ function WorkoutPicker({onSelect,onClose}){
         <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
       </div>
       <div style=${{display:'flex',flexDirection:'column',gap:'7px'}}>
-        ${WD_DEFAULT.map(day=>html`<button key=${day.n} onClick=${()=>onSelect(day.n)}
+        ${program.map((day,i)=>{const c=day.col||C.muted;return html`<button key=${day.id} onClick=${()=>onSelect(day.id)}
           style=${{display:'flex',alignItems:'center',gap:'12px',padding:'11px 14px',
-            background:C.s1,border:'1px solid '+day.col+'55',borderLeft:'4px solid '+day.col,
+            background:C.s1,border:'1px solid '+c+'55',borderLeft:'4px solid '+c,
             borderRadius:'10px',cursor:'pointer',textAlign:'left',width:'100%'}}>
-          <span style=${{fontSize:'22px',fontWeight:900,color:day.col,minWidth:'30px',letterSpacing:'-1px'}}>D${day.n}</span>
+          <span style=${{fontSize:'22px',fontWeight:900,color:c,minWidth:'30px',letterSpacing:'-1px'}}>D${i+1}</span>
           <div>
-            <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'2px',color:TAGC[day.tag],textTransform:'uppercase',display:'block',marginBottom:'1px'}}>${day.tag}</span>
+            <span style=${{fontSize:'8px',fontWeight:700,letterSpacing:'2px',color:c,textTransform:'uppercase',display:'block',marginBottom:'1px'}}>${day.tag}</span>
             <span style=${{fontSize:'12px',fontWeight:700,color:C.text}}>${day.title}</span>
           </div>
-        </button>`)}
+        </button>`;})}
         <button onClick=${()=>onSelect(null)}
           style=${{padding:'11px 14px',background:C.s1,border:'1px solid '+C.border,
             borderRadius:'10px',cursor:'pointer',color:C.muted,fontSize:'12px',fontWeight:600}}>
@@ -930,6 +1123,7 @@ function Checkin(){
   const [burst,setBurst]=useState(false);
   const [pickDay,setPickDay]=useState(null);
   const now=new Date(),tK=mkey(now.getFullYear(),now.getMonth()),tD=now.getDate();
+  const checkinProgram=getProgram();
 
   const getCur=k=>ci[k]||{days:[],workouts:{}};
 
@@ -1048,16 +1242,18 @@ function Checkin(){
         ${Array.from({length:dim}).map((_,i)=>{
           const d=i+1,ck=vmD.indexOf(d)>=0,wk=vmW[d];
           const isT=isNow&&d===tD,isFu=isNow&&d>tD;
+          const wkIdx=wk?checkinProgram.findIndex(w=>w.id===wk):-1;
+          const wkCol=wkIdx>=0?(checkinProgram[wkIdx].col||C.accent):null;
           return html`<div key=${d} onClick=${()=>toggleDay(vmK,d,isFu)}
             style=${{aspectRatio:'1',display:'flex',flexDirection:'column',alignItems:'center',
               justifyContent:'center',borderRadius:'50%',fontSize:'10px',fontWeight:ck||isT?700:400,
               cursor:isFu?'default':'pointer',
-              background:ck?WD_DEFAULT.find(w=>w.n===wk)?.col||C.accent:isT?C.accent+'22':'transparent',
+              background:ck?(wkCol||C.accent):isT?C.accent+'22':'transparent',
               color:ck?'#fff':isT?C.accent:isFu?C.dim:C.text,
               border:isT&&!ck?'1px solid '+C.accent:'none',
               transition:'background .15s',position:'relative'}}>
             ${d}
-            ${ck&&wk&&html`<span style=${{fontSize:'7px',fontWeight:900,lineHeight:1,opacity:.9}}>D${wk}</span>`}
+            ${ck&&wkIdx>=0&&html`<span style=${{fontSize:'7px',fontWeight:900,lineHeight:1,opacity:.9}}>D${wkIdx+1}</span>`}
           </div>`;
         })}
       </div>
