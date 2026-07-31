@@ -43,7 +43,7 @@ input,button,select,textarea{font-family:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
-const BUILD='2026.07.31-1';
+const BUILD='2026.07.31-2';
 const {h,render}=preact;
 const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
 const html=htm.bind(h);
@@ -350,6 +350,7 @@ const SVGD={
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   scale:'<path d="M12 3v18"/><path d="M5 21h14"/><path d="M6 7h12"/><path d="M6 7L3 14h6z"/><path d="M18 7l-3 7h6z"/>',
   back:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+  chevron:'<polyline points="6 9 12 15 18 9"/>',
 };
 function Ic({n,size,col,style}){
   const sz=size||20;
@@ -1254,6 +1255,7 @@ function Macros(){
   const [meals,setMeals]=useState([]);
   const [hist,setHist]=useState([]);
   const [addCtx,setAddCtx]=useState(null); // null=fechado, ''=genérico, 'Nome'=refeição travada
+  const [expandedMeal,setExpandedMeal]=useState(null); // nome da refeição (CORE4) expandida no dia
   const [editMeal,setEditMeal]=useState(null);
   const [expanded,setExpanded]=useState(null);
   const [expMeals,setExpMeals]=useState([]);
@@ -1302,10 +1304,9 @@ function Macros(){
   const goals=ls.g('goals')||GOALS;
   const mgOn=mealGoalsOn(),mDist=getMealDist();
   const mealGoalK=nm=>mgOn&&Number(mDist[nm])>0?Math.round(goals.kcal*Number(mDist[nm])/100):null;
-  const pendentes=mgOn?MEAL_OPTIONS.filter(m=>m!=='Outro'&&Number(mDist[m])>0&&CORE4.indexOf(m)<0&&!meals.some(x=>x.name===m)):[];
   const core4Totals=CORE4.map(m=>{
     const ms=meals.filter(x=>x.name===m);
-    return{name:m,k:ms.reduce((a,x)=>a+x.k,0),logged:ms.length>0,goalK:mealGoalK(m)};
+    return{name:m,k:ms.reduce((a,x)=>a+x.k,0),logged:ms.length>0,goalK:mealGoalK(m),entries:ms};
   });
 
   // Repetir alimentação de ontem: copia todas as refeições do dia anterior para hoje
@@ -1376,24 +1377,7 @@ function Macros(){
     </div>
 
     ${stab==='hoje'&&html`<div>
-      <div style=${{marginBottom:'10px'}}>
-        <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px',padding:'0 2px'}}>Refeições</div>
-        ${core4Totals.map(c=>html`<div key=${c.name} onClick=${()=>setAddCtx(c.name)} style=${{background:C.s1,
-          borderRadius:'12px',padding:'12px 13px',marginBottom:'7px',border:'1px solid '+C.border,
-          cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',minHeight:'54px'}}>
-          <div style=${{flex:1,minWidth:0}}>
-            <div style=${{fontSize:'14px',fontWeight:700}}>${c.name}</div>
-            <div style=${{fontSize:'11px',color:c.logged?C.accent:C.muted,marginTop:'2px'}}>
-              ${c.logged?c.k+' kcal':'0 kcal'}${c.goalK?' · meta '+c.goalK+' kcal':''}</div>
-          </div>
-          <button onClick=${e=>{e.stopPropagation();setAddCtx(c.name);}} style=${{background:C.accent+'18',
-            border:'none',borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
-            display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <${Ic} n="plus" size=${17} col=${C.accent}/></button>
-        </div>`)}
-      </div>
-
-      <div style=${{background:C.s1,borderRadius:'13px',padding:'14px',marginBottom:'10px',border:'1px solid '+C.border}}>
+      <div style=${{background:C.s1,borderRadius:'13px',padding:'14px',marginBottom:'14px',border:'1px solid '+C.border}}>
         <div style=${{display:'flex',alignItems:'center',gap:'12px'}}>
           <${ArcGauge} val=${totals.k} goal=${goals.kcal}/>
           <div style=${{flex:1}}>
@@ -1402,65 +1386,97 @@ function Macros(){
             <${Bar} label="Gordura" val=${totals.f} goal=${goals.fat} unit="g" color=${C.amber}/>
           </div>
         </div>
-        ${pendentes.length>0&&html`<div style=${{marginTop:'11px',paddingTop:'9px',borderTop:'1px solid '+C.border}}>
-          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'5px'}}>Outras refeições pendentes</div>
-          <div style=${{display:'flex',flexWrap:'wrap',gap:'5px'}}>
-            ${pendentes.map(m=>html`<span key=${m} onClick=${()=>setAddCtx(m)} style=${{fontSize:'9px',color:C.muted,
-              background:C.bg,border:'1px solid '+C.border,borderRadius:'5px',padding:'4px 8px',cursor:'pointer'}}>
-              ${m} · ${mealGoalK(m)} kcal</span>`)}
-          </div>
-        </div>`}
       </div>
 
       ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
         background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
-        fontWeight:700,cursor:'pointer',marginBottom:'9px',display:'flex',alignItems:'center',
+        fontWeight:700,cursor:'pointer',marginBottom:'12px',display:'flex',alignItems:'center',
         justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
         <${Ic} n="reset" size=${13} col=${C.muted}/>REPETIR REFEIÇÕES DE ONTEM (${yMeals.length})
       </button>`}
-      ${meals.map(m=>html`<div key=${m.id} style=${{background:C.s1,borderRadius:'11px',padding:'10px 12px',
-        marginBottom:'7px',border:'1px '+(m.estimated?'dashed '+C.amber+'66':'solid '+C.border),
-        display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'7px'}}>
-        <div style=${{flex:1,minWidth:0}}>
-          <div style=${{fontSize:'12px',fontWeight:700,marginBottom:'3px',display:'flex',alignItems:'center',gap:'6px',flexWrap:'wrap'}}>
-            <span>${m.name}</span>
-            ${m.estimated&&html`<span style=${{fontSize:'7px',fontWeight:700,color:C.amber,background:C.amber+'18',
-              padding:'1px 5px',borderRadius:'4px',letterSpacing:'.5px'}}>ESTIMADO</span>`}
+
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px',padding:'0 2px'}}>Refeições</div>
+      ${core4Totals.map(c=>{
+        const isExp=expandedMeal===c.name;
+        const pct=c.goalK?Math.round((c.k/c.goalK)*100):null;
+        const pctCol=pct==null?(c.logged?C.accent:C.muted):(pct>=85&&pct<=115?C.ok:pct<85?C.amber:C.red);
+        return html`<div key=${c.name} style=${{background:C.s1,borderRadius:'12px',marginBottom:'7px',
+          border:'1px solid '+C.border,overflow:'hidden'}}>
+          <div onClick=${()=>setExpandedMeal(isExp?null:c.name)} style=${{padding:'12px 13px',cursor:'pointer',
+            display:'flex',alignItems:'center',gap:'9px',minHeight:'54px'}}>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'14px',fontWeight:700}}>${c.name}</div>
+              <div style=${{fontSize:'11px',color:pctCol,marginTop:'2px'}}>
+                ${c.logged?c.k+' kcal':'0 kcal'}${c.goalK?' · meta '+c.goalK+' kcal':''}</div>
+            </div>
+            <${Ic} n="chevron" size=${15} col=${C.dim} style=${{flexShrink:0,transition:'transform .15s',
+              transform:isExp?'rotate(180deg)':'rotate(0deg)'}}/>
+            <button onClick=${e=>{e.stopPropagation();setAddCtx(c.name);}} style=${{background:C.accent+'18',
+              border:'none',borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <${Ic} n="plus" size=${17} col=${C.accent}/></button>
           </div>
-          <div style=${{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-            <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${m.k} kcal</span>
-            <span style=${{fontSize:'10px',color:C.blue}}>P ${m.p.toFixed(2)}g</span>
-            <span style=${{fontSize:'10px',color:C.purple}}>C ${m.c.toFixed(2)}g</span>
-            <span style=${{fontSize:'10px',color:C.amber}}>G ${m.f.toFixed(2)}g</span>
-          </div>
-          ${(()=>{const gk=mealGoalK(m.name);if(!gk)return null;
-            const p=(m.k/gk)*100,col=p>=85&&p<=115?C.ok:p<85?C.amber:C.red;
-            return html`<div style=${{marginTop:'6px'}}>
-              <div style=${{height:'3px',background:C.bg,borderRadius:'2px',overflow:'hidden',marginBottom:'3px'}}>
-                <div style=${{width:Math.min(p,100)+'%',height:'100%',background:col,borderRadius:'2px'}}/>
+          ${isExp&&html`<div style=${{padding:'2px 13px 13px',borderTop:'1px solid '+C.border}}>
+            ${c.entries.length===0?html`<div style=${{padding:'16px 0',textAlign:'center',fontSize:'11px',color:C.dim}}>
+              Nenhum alimento registrado ainda hoje.</div>`
+            :c.entries.map((m,mi)=>html`<div key=${m.id} style=${{paddingTop:'12px',
+              borderTop:mi>0?'1px solid '+C.border+'88':'none',marginTop:mi>0?'0':'0'}}>
+              <div style=${{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'8px'}}>
+                <div style=${{flex:1,minWidth:0}}>
+                  ${m.estimated&&html`<span style=${{fontSize:'7px',fontWeight:700,color:C.amber,background:C.amber+'18',
+                    padding:'1px 5px',borderRadius:'4px',letterSpacing:'.5px'}}>ESTIMADO</span>`}
+                  <div style=${{display:'flex',gap:'8px',flexWrap:'wrap',marginTop:m.estimated?'4px':'0'}}>
+                    <span style=${{fontSize:'11px',fontWeight:700,color:C.accent}}>${m.k} kcal</span>
+                    <span style=${{fontSize:'11px',color:C.blue}}>P ${m.p.toFixed(1)}g</span>
+                    <span style=${{fontSize:'11px',color:C.purple}}>C ${m.c.toFixed(1)}g</span>
+                    <span style=${{fontSize:'11px',color:C.amber}}>G ${m.f.toFixed(1)}g</span>
+                  </div>
+                  ${m.items&&m.items.length>0&&html`<div style=${{marginTop:'6px',display:'flex',flexDirection:'column',gap:'2px'}}>
+                    ${m.items.map((it,ii)=>html`<div key=${ii} style=${{fontSize:'10px',color:C.dim}}>
+                      ${it.food} · ${it.qty}${it.unit}</div>`)}
+                  </div>`}
+                </div>
+                <div style=${{display:'flex',gap:'6px',flexShrink:0}}>
+                  <button onClick=${()=>setEditMeal({...m})} style=${{background:C.bg,border:'none',
+                    borderRadius:'50%',width:'34px',height:'34px',cursor:'pointer',
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <${Ic} n="pencil" size=${15} col=${C.muted}/></button>
+                  <button onClick=${()=>save(meals.filter(x=>x.id!==m.id))} style=${{background:C.red+'14',
+                    border:'none',borderRadius:'50%',width:'34px',height:'34px',cursor:'pointer',
+                    display:'flex',alignItems:'center',justifyContent:'center'}}>
+                    <${Ic} n="trash" size=${15} col=${C.red}/></button>
+                </div>
               </div>
-              <span style=${{fontSize:'8px',color:col,letterSpacing:'.4px'}}>${Math.round(p)}% da meta (${gk} kcal)</span>
-            </div>`;})()}
-        </div>
-        <div style=${{display:'flex',gap:'6px',alignItems:'center',flexShrink:0}}>
-          <button onClick=${()=>setEditMeal({...m})} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
-            <${Ic} n="pencil" size=${14} col=${C.muted}/>
-          </button>
-          <button onClick=${()=>save(meals.filter(x=>x.id!==m.id))} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
-            <${Ic} n="trash" size=${14} col=${C.dim}/>
-          </button>
-        </div>
-      </div>`)}
-      ${meals.length===0&&html`<div style=${{textAlign:'center',padding:'32px 0'}}>
-        <${Ic} n="utensils" size=${38} col=${C.dim} style=${{marginBottom:'10px'}}/>
-        <div style=${{fontSize:'11px',color:C.muted}}>Nenhuma refeição registrada hoje</div>
-      </div>`}
-      <button onClick=${()=>setAddCtx('')} style=${{width:'100%',padding:'11px',background:C.accent+'14',
-        border:'1px dashed '+C.accent+'55',borderRadius:'9px',color:C.accent,fontSize:'11px',
-        fontWeight:700,cursor:'pointer',marginTop:'3px',display:'flex',alignItems:'center',
-        justifyContent:'center',gap:'7px'}}>
-        <${Ic} n="plus" size=${14} col=${C.accent}/>ADICIONAR REFEIÇÃO
-      </button>
+            </div>`)}
+          </div>`}
+        </div>`;})}
+
+      ${(()=>{const outros=meals.filter(x=>CORE4.indexOf(x.name)<0);
+        return outros.length>0&&html`<div style=${{marginTop:'4px'}}>
+          <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px',padding:'0 2px'}}>Outras refeições</div>
+          ${outros.map(m=>html`<div key=${m.id} style=${{background:C.s1,borderRadius:'12px',padding:'12px 13px',
+            marginBottom:'7px',border:'1px '+(m.estimated?'dashed '+C.amber+'66':'solid '+C.border),
+            display:'flex',justifyContent:'space-between',alignItems:'center',gap:'8px'}}>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'14px',fontWeight:700}}>${m.name}</div>
+              <div style=${{fontSize:'11px',color:C.accent,marginTop:'2px'}}>${m.k} kcal</div>
+            </div>
+            <div style=${{display:'flex',gap:'6px',flexShrink:0}}>
+              <button onClick=${()=>setEditMeal({...m})} style=${{background:C.bg,border:'none',
+                borderRadius:'50%',width:'34px',height:'34px',cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <${Ic} n="pencil" size=${15} col=${C.muted}/></button>
+              <button onClick=${()=>save(meals.filter(x=>x.id!==m.id))} style=${{background:C.red+'14',
+                border:'none',borderRadius:'50%',width:'34px',height:'34px',cursor:'pointer',
+                display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <${Ic} n="trash" size=${15} col=${C.red}/></button>
+            </div>
+          </div>`)}
+        </div>`;})()}
+
+      <div onClick=${()=>setAddCtx('')} style=${{textAlign:'center',padding:'12px 0 4px',cursor:'pointer'}}>
+        <span style=${{fontSize:'11px',color:C.muted,fontWeight:600}}>+ outra refeição</span>
+      </div>
     </div>`}
 
     ${stab==='historico'&&html`<div>
