@@ -190,8 +190,7 @@ const sumM=ms=>ms.reduce((a,m)=>({k:a.k+(m.k||0),p:a.p+(m.p||0),c:a.c+(m.c||0),f
 /* ── METAS (peso / condicionamento / kcal por refeição) ── */
 const METAS_DEF={startKg:null,startDate:null,targetKg:null,weeklyKg:0.5,workoutsWeek:5};
 const getMetas=()=>Object.assign({},METAS_DEF,ls.g('metas')||{});
-const MEAL_DIST_DEF={'Café da manhã':27,'Lanche da manhã':10,'Almoço':28,'Lanche da tarde':10,
-  'Pré-treino':0,'Pós-treino':0,'Jantar':20,'Ceia':5,'Outro':0};
+const MEAL_DIST_DEF={'Café da manhã':27,'Almoço':28,'Lanche':25,'Jantar':20,'Outro':0};
 const getMealDist=()=>Object.assign({},MEAL_DIST_DEF,ls.g('mealDist')||{});
 const mealGoalsOn=()=>ls.g('mealGoalsOn')===true;
 /* Peso atual = último registro do wlog */
@@ -229,6 +228,25 @@ const recentFoods=(days,limit)=>{
     }
   }
   return Array.from(seen.values()).slice(0,limit||30);
+};
+/* ── SUGESTÕES POR REFEIÇÃO — alimentos mais usados historicamente NESSA refeição
+   específica (ex: o que você mais come no café da manhã), ordenado por frequência ── */
+const mealSuggestions=(mealName,limit)=>{
+  if(!mealName)return[];
+  const agg=new Map();
+  for(let i=0;i<60;i++){
+    const d=ls.g(tkey(i));if(!d||!d.meals)continue;
+    for(const m of d.meals){
+      if(m.name!==mealName||m.estimated||!m.items)continue;
+      for(const it of m.items){
+        if(!it||!it.food)continue;
+        const key=norm(it.food);
+        if(agg.has(key))agg.get(key).count++;
+        else agg.set(key,Object.assign({},it,{count:1}));
+      }
+    }
+  }
+  return Array.from(agg.values()).sort((a,b)=>b.count-a.count).slice(0,limit||8);
 };
 /* ── PREPARED FOODS (Pratos prontos & porções) ── */
 const PRATOS=[
@@ -327,6 +345,7 @@ const SVGD={
   star:'<polygon points="12 2.5 15 9 22 9.9 17 14.7 18.2 21.6 12 18.3 5.8 21.6 7 14.7 2 9.9 9 9"/>',
   target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
   scale:'<path d="M12 3v18"/><path d="M5 21h14"/><path d="M6 7h12"/><path d="M6 7L3 14h6z"/><path d="M18 7l-3 7h6z"/>',
+  back:'<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
 };
 function Ic({n,size,col,style}){
   const sz=size||20;
@@ -1230,7 +1249,7 @@ function Macros(){
   const [stab,setStab]=useState('hoje');
   const [meals,setMeals]=useState([]);
   const [hist,setHist]=useState([]);
-  const [showAdd,setShowAdd]=useState(false);
+  const [addCtx,setAddCtx]=useState(null); // null=fechado, ''=genérico, 'Nome'=refeição travada
   const [editMeal,setEditMeal]=useState(null);
   const [expanded,setExpanded]=useState(null);
   const [expMeals,setExpMeals]=useState([]);
@@ -1279,7 +1298,11 @@ function Macros(){
   const goals=ls.g('goals')||GOALS;
   const mgOn=mealGoalsOn(),mDist=getMealDist();
   const mealGoalK=nm=>mgOn&&Number(mDist[nm])>0?Math.round(goals.kcal*Number(mDist[nm])/100):null;
-  const pendentes=mgOn?MEAL_OPTIONS.filter(m=>Number(mDist[m])>0&&!meals.some(x=>x.name===m)):[];
+  const pendentes=mgOn?MEAL_OPTIONS.filter(m=>m!=='Outro'&&Number(mDist[m])>0&&CORE4.indexOf(m)<0&&!meals.some(x=>x.name===m)):[];
+  const core4Totals=CORE4.map(m=>{
+    const ms=meals.filter(x=>x.name===m);
+    return{name:m,k:ms.reduce((a,x)=>a+x.k,0),logged:ms.length>0,goalK:mealGoalK(m)};
+  });
 
   // Repetir alimentação de ontem: copia todas as refeições do dia anterior para hoje
   const yData=ls.g(tkey(1));
@@ -1349,6 +1372,23 @@ function Macros(){
     </div>
 
     ${stab==='hoje'&&html`<div>
+      <div style=${{marginBottom:'10px'}}>
+        <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px',padding:'0 2px'}}>Refeições</div>
+        ${core4Totals.map(c=>html`<div key=${c.name} onClick=${()=>setAddCtx(c.name)} style=${{background:C.s1,
+          borderRadius:'12px',padding:'12px 13px',marginBottom:'7px',border:'1px solid '+C.border,
+          cursor:'pointer',display:'flex',alignItems:'center',gap:'10px',minHeight:'54px'}}>
+          <div style=${{flex:1,minWidth:0}}>
+            <div style=${{fontSize:'14px',fontWeight:700}}>${c.name}</div>
+            <div style=${{fontSize:'11px',color:c.logged?C.accent:C.muted,marginTop:'2px'}}>
+              ${c.logged?c.k+' kcal':'0 kcal'}${c.goalK?' · meta '+c.goalK+' kcal':''}</div>
+          </div>
+          <button onClick=${e=>{e.stopPropagation();setAddCtx(c.name);}} style=${{background:C.accent+'18',
+            border:'none',borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <${Ic} n="plus" size=${17} col=${C.accent}/></button>
+        </div>`)}
+      </div>
+
       <div style=${{background:C.s1,borderRadius:'13px',padding:'14px',marginBottom:'10px',border:'1px solid '+C.border}}>
         <div style=${{display:'flex',alignItems:'center',gap:'12px'}}>
           <${ArcGauge} val=${totals.k} goal=${goals.kcal}/>
@@ -1359,14 +1399,15 @@ function Macros(){
           </div>
         </div>
         ${pendentes.length>0&&html`<div style=${{marginTop:'11px',paddingTop:'9px',borderTop:'1px solid '+C.border}}>
-          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'5px'}}>Ainda faltam hoje</div>
+          <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'5px'}}>Outras refeições pendentes</div>
           <div style=${{display:'flex',flexWrap:'wrap',gap:'5px'}}>
-            ${pendentes.map(m=>html`<span key=${m} style=${{fontSize:'9px',color:C.muted,
-              background:C.bg,border:'1px solid '+C.border,borderRadius:'5px',padding:'3px 7px'}}>
+            ${pendentes.map(m=>html`<span key=${m} onClick=${()=>setAddCtx(m)} style=${{fontSize:'9px',color:C.muted,
+              background:C.bg,border:'1px solid '+C.border,borderRadius:'5px',padding:'4px 8px',cursor:'pointer'}}>
               ${m} · ${mealGoalK(m)} kcal</span>`)}
           </div>
         </div>`}
       </div>
+
       ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
         background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
         fontWeight:700,cursor:'pointer',marginBottom:'9px',display:'flex',alignItems:'center',
@@ -1410,7 +1451,7 @@ function Macros(){
         <${Ic} n="utensils" size=${38} col=${C.dim} style=${{marginBottom:'10px'}}/>
         <div style=${{fontSize:'11px',color:C.muted}}>Nenhuma refeição registrada hoje</div>
       </div>`}
-      <button onClick=${()=>setShowAdd(true)} style=${{width:'100%',padding:'11px',background:C.accent+'14',
+      <button onClick=${()=>setAddCtx('')} style=${{width:'100%',padding:'11px',background:C.accent+'14',
         border:'1px dashed '+C.accent+'55',borderRadius:'9px',color:C.accent,fontSize:'11px',
         fontWeight:700,cursor:'pointer',marginTop:'3px',display:'flex',alignItems:'center',
         justifyContent:'center',gap:'7px'}}>
@@ -1523,7 +1564,8 @@ function Macros(){
       </div>`}
     </div>`}
 
-    ${showAdd&&html`<${AddMeal} onSave=${m=>{save([...meals,m]);setShowAdd(false);}} onClose=${()=>setShowAdd(false)}/>`}
+    ${addCtx!==null&&html`<${AddMeal} mealName=${addCtx||undefined}
+      onSave=${m=>{save([...meals,m]);setAddCtx(null);}} onClose=${()=>setAddCtx(null)}/>`}
     ${editMeal&&html`<${EditMealModal} meal=${editMeal}
       onSave=${updated=>{save(meals.map(m=>m.id===updated.id?updated:m));setEditMeal(null);}}
       onClose=${()=>setEditMeal(null)}/>`}
@@ -1700,18 +1742,20 @@ function EditMealModal({meal,onSave,onClose}){
   </div>`;}
 
 /* ── ADD MEAL ── */
-const MEAL_OPTIONS=['Café da manhã','Lanche da manhã','Almoço','Lanche da tarde',
-  'Pré-treino','Pós-treino','Jantar','Ceia','Outro'];
+const MEAL_OPTIONS=['Café da manhã','Almoço','Lanche','Jantar','Outro'];
+const CORE4=['Café da manhã','Almoço','Lanche','Jantar'];
 
-function AddMeal({onSave,onClose}){
+function AddMeal({onSave,onClose,mealName}){
+  const locked=!!mealName;
   const [mode,setMode]=useState('search');
   const [sub,setSub]=useState('todos');
   const [quick,setQuick]=useState({name:'',k:'',p:'',c:'',f:''});
   const [recents]=useState(()=>recentFoods(21,30));
+  const [suggestions]=useState(()=>mealSuggestions(mealName,8));
   const [myMeals,setMyMeals]=useState(()=>getMyMeals());
   const [myFoods,setMyFoods]=useState(()=>getMyFoods());
   const [flash,setFlash]=useState('');
-  const [name,setName]=useState('');
+  const [name,setName]=useState(()=>locked?mealName:'');
   const [customName,setCustomName]=useState('');
   const [isCustom,setIsCustom]=useState(false);
   const [items,setItems]=useState([]);
@@ -1730,6 +1774,9 @@ function AddMeal({onSave,onClose}){
   const [photoResult,setPhotoResult]=useState(null);
   const [photoEdit,setPhotoEdit]=useState({name:'',k:0,p:0,c:0,f:0});
   const qRef=useRef(),timer=useRef();
+
+  const favForMeal=locked?myMeals.filter(mm=>mm.fav&&mm.mealName===mealName):[];
+  const toggleFav=mm=>{const l=getMyMeals().map(x=>x.id===mm.id?{...x,fav:!x.fav}:x);ls.s('myMeals',l);setMyMeals(l);};
 
   const pick=f=>{setSel(f);setSrch(f.n);setShowSugg(false);
     const u=FU[f.id]||{};setUnit(u.ml?'ml':u.un?'un':'g');
@@ -1820,7 +1867,7 @@ function AddMeal({onSave,onClose}){
     const nm=(window.prompt('Nome para salvar em "Minhas refeições":',finalName||'')||'').trim();
     if(!nm)return;
     const t=sumM(items);
-    saveMyMeal({id:Date.now(),name:nm,mealName:isCustom?null:name,
+    saveMyMeal({id:Date.now(),name:nm,mealName:isCustom?null:name,fav:false,
       items:items.map(x=>Object.assign({},x)),k:t.k,p:t.p,c:t.c,f:t.f});
     setMyMeals(getMyMeals());
     setFlash('Salvo em "Minhas refeições"');setTimeout(()=>setFlash(''),2400);};
@@ -1828,27 +1875,32 @@ function AddMeal({onSave,onClose}){
   const SrcBadge=({label,col})=>html`<span style=${{fontSize:'8px',fontWeight:700,color:col,background:col+'18',
     padding:'1px 5px',borderRadius:'3px',marginLeft:'4px',flexShrink:0}}>${label}</span>`;
 
-  return html`<div style=${{position:'fixed',inset:0,background:'rgba(0,0,0,.92)',zIndex:100,
-    display:'flex',flexDirection:'column',justifyContent:'flex-end'}}>
-    <div style=${{background:C.bg,borderRadius:'18px 18px 0 0',padding:'16px 15px 52px',maxHeight:'94vh',overflowY:'auto'}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
-        <span style=${{fontSize:'13px',fontWeight:800}}>Adicionar Refeição</span>
-        <button onClick=${onClose} style=${{background:'none',border:'none',color:C.muted,fontSize:'20px',cursor:'pointer',lineHeight:1}}>×</button>
-      </div>
+  return html`<div style=${{position:'fixed',inset:0,background:C.bg,zIndex:100,
+    display:'flex',flexDirection:'column'}}>
+    <div style=${{position:'sticky',top:0,background:C.bg,zIndex:5,borderBottom:'1px solid '+C.border,
+      padding:'14px 15px 12px',display:'flex',alignItems:'center',gap:'10px',flexShrink:0}}>
+      <button onClick=${onClose} style=${{background:'none',border:'none',color:C.text,cursor:'pointer',
+        padding:'2px',display:'flex',alignItems:'center',flexShrink:0}}>
+        <${Ic} n="back" size=${22} col=${C.text}/>
+      </button>
+      <span style=${{fontSize:locked?'17px':'14px',fontWeight:900,flex:1,overflow:'hidden',
+        textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${locked?mealName:'Adicionar Refeição'}</span>
+    </div>
+    <div style=${{flex:1,overflowY:'auto',padding:'14px 15px 60px'}}>
 
       <div style=${{display:'flex',gap:'4px',background:C.s1,borderRadius:'8px',padding:'3px',marginBottom:'12px'}}>
         ${[['search','search','Buscar'],['photo','camera','Foto'],['quick','bolt','Rápido']].map(t=>
-          html`<button key=${t[0]} onClick=${()=>{setMode(t[0]);}} style=${{flex:1,padding:'7px 0',border:'none',
-            borderRadius:'6px',cursor:'pointer',fontSize:'11px',fontWeight:700,
+          html`<button key=${t[0]} onClick=${()=>{setMode(t[0]);}} style=${{flex:1,padding:'9px 0',border:'none',
+            borderRadius:'6px',cursor:'pointer',fontSize:'12px',fontWeight:700,
             background:mode===t[0]?C.accent:'transparent',color:mode===t[0]?'#fff':C.muted,
-            display:'flex',alignItems:'center',justifyContent:'center',gap:'5px'}}>
-            <${Ic} n=${t[1]} size=${13} col=${mode===t[0]?'#fff':C.muted}/>${t[2]}
+            display:'flex',alignItems:'center',justifyContent:'center',gap:'6px'}}>
+            <${Ic} n=${t[1]} size=${14} col=${mode===t[0]?'#fff':C.muted}/>${t[2]}
           </button>`)}
       </div>
 
-      ${flash&&html`<div style=${{fontSize:'10px',color:C.ok,background:C.ok+'14',border:'1px solid '+C.ok+'44',
-        borderRadius:'7px',padding:'7px 10px',marginBottom:'9px',display:'flex',alignItems:'center',gap:'6px'}}>
-        <${Ic} n="check" size=${12} col=${C.ok}/>${flash}</div>`}
+      ${flash&&html`<div style=${{fontSize:'11px',color:C.ok,background:C.ok+'14',border:'1px solid '+C.ok+'44',
+        borderRadius:'7px',padding:'8px 10px',marginBottom:'10px',display:'flex',alignItems:'center',gap:'6px'}}>
+        <${Ic} n="check" size=${13} col=${C.ok}/>${flash}</div>`}
 
       ${mode==='quick'&&html`<div>
         <div style=${{fontSize:'10px',color:C.dim,marginBottom:'9px',lineHeight:'1.5'}}>
@@ -1925,6 +1977,7 @@ function AddMeal({onSave,onClose}){
       </div>`}
 
       ${mode==='search'&&html`<div>
+        ${!locked&&html`<div>
         <select value=${isCustom?'Outro':name}
           onChange=${e=>{const v=e.target.value;if(v==='Outro'){setIsCustom(true);setName('Outro');}else{setIsCustom(false);setName(v);}}}
           style=${{width:'100%',padding:'9px 11px',background:C.s1,border:'1px solid '+C.border,
@@ -1939,6 +1992,20 @@ function AddMeal({onSave,onClose}){
           placeholder="Nome personalizado..."
           style=${{width:'100%',padding:'8px 11px',background:C.s1,border:'1px solid '+C.border,
             borderRadius:'8px',color:C.text,fontSize:'11px',outline:'none',marginBottom:'7px'}}/>`}
+        </div>`}
+
+        ${favForMeal.length>0&&html`<div style=${{marginBottom:'10px'}}>
+          <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px'}}>Suas favoritas</div>
+          <div style=${{display:'flex',gap:'7px',overflowX:'auto',paddingBottom:'2px'}}>
+            ${favForMeal.map(mm=>html`<button key=${mm.id} onClick=${()=>loadMyMeal(mm)} style=${{flexShrink:0,
+              display:'flex',alignItems:'center',gap:'6px',padding:'9px 13px',background:C.amber+'14',
+              border:'1px solid '+C.amber+'44',borderRadius:'20px',cursor:'pointer',whiteSpace:'nowrap'}}>
+              <${Ic} n="star" size=${12} col=${C.amber}/>
+              <span style=${{fontSize:'12px',fontWeight:700,color:C.text}}>${mm.name}</span>
+              <span style=${{fontSize:'10px',color:C.muted}}>${mm.k} kcal</span>
+            </button>`)}
+          </div>
+        </div>`}
 
         <div style=${{display:'flex',gap:'16px',borderBottom:'1px solid '+C.border,marginBottom:'9px'}}>
           ${[['todos','Todos'],['refeicoes','Minhas refeições'],['alimentos','Meus alimentos']].map(t=>
@@ -1949,25 +2016,26 @@ function AddMeal({onSave,onClose}){
         </div>
 
         ${sub==='todos'&&html`<div>
-        <div style=${{position:'relative',marginBottom:'7px'}}>
+        <div style=${{position:'relative',marginBottom:'10px'}}>
           <input value=${srch} onInput=${e=>onSrch(e.target.value)} placeholder="Buscar alimento..."
-            style=${{width:'100%',padding:'9px 36px 9px 11px',background:C.s1,border:'1px solid '+C.border,
-              borderRadius:'7px',color:C.text,fontSize:'11px',outline:'none'}}/>
-          <span style=${{position:'absolute',right:'10px',top:'50%',transform:'translateY(-50%)'}}>
-            <${Ic} n="search" size=${14} col=${C.muted}/>
+            style=${{width:'100%',padding:'13px 40px 13px 13px',background:C.s1,border:'1px solid '+C.border,
+              borderRadius:'9px',color:C.text,fontSize:'15px',outline:'none'}}/>
+          <span style=${{position:'absolute',right:'13px',top:'50%',transform:'translateY(-50%)'}}>
+            <${Ic} n="search" size=${17} col=${C.muted}/>
           </span>
           ${showSugg&&(allResults.length>0||loading)&&html`<div style=${{
             position:'absolute',top:'100%',left:0,right:0,background:C.s1,
-            border:'1px solid '+C.border,borderRadius:'8px',zIndex:10,
-            maxHeight:'210px',overflowY:'auto',marginTop:'2px',boxShadow:'0 8px 28px rgba(0,0,0,.5)'}}>
-            ${loading&&html`<div style=${{padding:'7px 11px',fontSize:'10px',color:C.muted,
+            border:'1px solid '+C.border,borderRadius:'10px',zIndex:10,
+            maxHeight:'320px',overflowY:'auto',marginTop:'4px',boxShadow:'0 8px 28px rgba(0,0,0,.5)'}}>
+            ${loading&&html`<div style=${{padding:'10px 13px',fontSize:'11px',color:C.muted,
               display:'flex',alignItems:'center',gap:'6px'}}>
-              <${Ic} n="search" size=${11} col=${C.muted}/>Buscando produtos embalados...</div>`}
-            ${allResults.map(f=>html`<div key=${f.id} onClick=${()=>pick(f)} style=${{padding:'9px 11px',cursor:'pointer',
-              borderBottom:'1px solid '+C.border+'88',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:'6px'}}>
+              <${Ic} n="search" size=${12} col=${C.muted}/>Buscando produtos embalados...</div>`}
+            ${allResults.map(f=>html`<div key=${f.id} onClick=${()=>pick(f)} style=${{padding:'13px',cursor:'pointer',
+              minHeight:'50px',borderBottom:'1px solid '+C.border+'88',display:'flex',justifyContent:'space-between',
+              alignItems:'flex-start',gap:'8px'}}>
               <div style=${{flex:1,minWidth:0}}>
-                <span style=${{fontSize:'11px',display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</span>
-                <span style=${{fontSize:'9px',color:C.muted}}>${f.k} kcal · P${f.p}g C${f.c}g G${f.f}g/100g
+                <span style=${{fontSize:'14px',fontWeight:600,display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</span>
+                <span style=${{fontSize:'11px',color:C.muted}}>${f.k} kcal · P${f.p}g C${f.c}g G${f.f}g/100g
                   ${f.note?html` · <span style=${{color:C.amber}}>${f.note}</span>`:''}
                 </span>
               </div>
@@ -1975,9 +2043,9 @@ function AddMeal({onSave,onClose}){
             </div>`)}
             ${!loading&&allResults.length===0&&srch.length>=2&&html`<div
               onClick=${()=>{setShowSugg(false);setShowC(true);setCust(p=>({...p,name:srch}));}}
-              style=${{padding:'9px 11px',cursor:'pointer',fontSize:'11px',color:C.blue,
-                display:'flex',alignItems:'center',gap:'6px'}}>
-              <${Ic} n="pencil" size=${12} col=${C.blue}/>Cadastrar "${srch}" manualmente
+              style=${{padding:'13px',cursor:'pointer',fontSize:'13px',color:C.blue,
+                display:'flex',alignItems:'center',gap:'7px'}}>
+              <${Ic} n="pencil" size=${13} col=${C.blue}/>Cadastrar "${srch}" manualmente
             </div>`}
           </div>`}
         </div>
@@ -1985,16 +2053,16 @@ function AddMeal({onSave,onClose}){
         <div style=${{display:'flex',gap:'6px',marginBottom:'5px'}}>
           <input ref=${qRef} type="number" value=${qty} onInput=${e=>setQty(e.target.value)}
             onKeyDown=${e=>e.key==='Enter'&&addItem()} placeholder="Qtd" disabled=${!sel}
-            style=${{flex:1,padding:'8px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
-              color:sel?C.text:C.dim,fontSize:'12px',outline:'none',textAlign:'center',opacity:sel?1:0.5}}/>
+            style=${{flex:1,padding:'12px 9px',background:C.bg,border:'1px solid '+C.border,borderRadius:'8px',
+              color:sel?C.text:C.dim,fontSize:'15px',fontWeight:700,outline:'none',textAlign:'center',opacity:sel?1:0.5}}/>
           <select value=${unit} onChange=${e=>setUnit(e.target.value)} disabled=${!sel}
-            style=${{padding:'8px 6px',background:C.bg,border:'1px solid '+C.border,borderRadius:'6px',
-              color:sel?C.text:C.dim,fontSize:'10px',outline:'none',opacity:sel?1:0.5}}>
+            style=${{padding:'12px 8px',background:C.bg,border:'1px solid '+C.border,borderRadius:'8px',
+              color:sel?C.text:C.dim,fontSize:'13px',outline:'none',opacity:sel?1:0.5}}>
             <option value="g">g</option><option value="ml">ml</option><option value="un">un</option>
           </select>
-          <button onClick=${addItem} disabled=${!sel||!qty} style=${{padding:'8px 13px',
-            background:sel&&qty?C.accent:C.dim,border:'none',borderRadius:'6px',
-            color:'#fff',fontSize:'14px',fontWeight:700,cursor:sel&&qty?'pointer':'default',lineHeight:1}}>+</button>
+          <button onClick=${addItem} disabled=${!sel||!qty} style=${{padding:'12px 18px',
+            background:sel&&qty?C.accent:C.dim,border:'none',borderRadius:'8px',
+            color:'#fff',fontSize:'17px',fontWeight:700,cursor:sel&&qty?'pointer':'default',lineHeight:1}}>+</button>
         </div>
 
         ${sel&&qty&&Number(qty)>0&&(()=>{const r=calcR(sel,Number(qty),unit);
@@ -2029,67 +2097,89 @@ function AddMeal({onSave,onClose}){
             borderRadius:'6px',color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Adicionar</button>
         </div>`}
 
-        ${!srch&&!showC&&recents.length>0&&html`<div style=${{background:C.s1,borderRadius:'11px',
-          padding:'10px 11px',marginBottom:'8px',border:'1px solid '+C.border}}>
-          <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'7px'}}>Registrado recentemente</div>
-          ${recents.slice(0,8).map((it,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',
-            justifyContent:'space-between',gap:'8px',padding:'7px 0',
+        ${!srch&&!showC&&suggestions.length>0&&html`<div style=${{background:C.s1,borderRadius:'12px',
+          padding:'12px 13px',marginBottom:'10px',border:'1px solid '+C.accent+'33'}}>
+          <div style=${{fontSize:'10px',color:C.accent,letterSpacing:'1.5px',textTransform:'uppercase',
+            marginBottom:'8px',fontWeight:700}}>Sugeridos para ${mealName}</div>
+          ${suggestions.map((it,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',
+            justifyContent:'space-between',gap:'10px',padding:'10px 0',minHeight:'48px',
             borderTop:i>0?'1px solid '+C.border+'88':'none'}}>
             <div style=${{flex:1,minWidth:0}}>
-              <div style=${{fontSize:'11px',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${it.food}</div>
-              <div style=${{fontSize:'9px',color:C.muted}}>${it.k} kcal · ${it.qty}${it.unit}${it.origem?' · '+it.origem:''}</div>
+              <div style=${{fontSize:'14px',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${it.food}</div>
+              <div style=${{fontSize:'11px',color:C.muted}}>${it.k} kcal · ${it.qty}${it.unit}</div>
             </div>
-            <button onClick=${()=>addRecent(it)} style=${{background:C.accent+'18',border:'none',
-              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+            <button onClick=${()=>addRecent(it)} style=${{background:C.accent+'20',border:'none',
+              borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
               display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+              <${Ic} n="plus" size=${17} col=${C.accent}/></button>
           </div>`)}
         </div>`}
-        ${!srch&&!showC&&recents.length===0&&html`<div style=${{textAlign:'center',padding:'18px 0',
-          fontSize:'10px',color:C.dim}}>Sem alimentos recentes ainda — busque um acima.</div>`}
+
+        ${!srch&&!showC&&recents.length>0&&html`<div style=${{background:C.s1,borderRadius:'12px',
+          padding:'12px 13px',marginBottom:'8px',border:'1px solid '+C.border}}>
+          <div style=${{fontSize:'10px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'8px'}}>Registrado recentemente</div>
+          ${recents.slice(0,8).map((it,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',
+            justifyContent:'space-between',gap:'10px',padding:'10px 0',minHeight:'48px',
+            borderTop:i>0?'1px solid '+C.border+'88':'none'}}>
+            <div style=${{flex:1,minWidth:0}}>
+              <div style=${{fontSize:'14px',fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${it.food}</div>
+              <div style=${{fontSize:'11px',color:C.muted}}>${it.k} kcal · ${it.qty}${it.unit}${it.origem?' · '+it.origem:''}</div>
+            </div>
+            <button onClick=${()=>addRecent(it)} style=${{background:C.accent+'18',border:'none',
+              borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
+              display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <${Ic} n="plus" size=${17} col=${C.accent}/></button>
+          </div>`)}
+        </div>`}
+        ${!srch&&!showC&&recents.length===0&&suggestions.length===0&&html`<div style=${{textAlign:'center',padding:'18px 0',
+          fontSize:'11px',color:C.dim}}>Sem alimentos recentes ainda — busque um acima.</div>`}
         </div>`}
 
         ${sub==='refeicoes'&&html`<div style=${{marginBottom:'8px'}}>
           ${myMeals.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
             <${Ic} n="star" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
-            <div style=${{fontSize:'10px',color:C.muted,lineHeight:'1.6'}}>
+            <div style=${{fontSize:'11px',color:C.muted,lineHeight:'1.6'}}>
               Nenhuma refeição salva.<br/>Monte os itens na aba Todos e toque em "Salvar como minha refeição".</div>
           </div>`}
-          ${myMeals.map(mm=>html`<div key=${mm.id} style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',
-            marginBottom:'6px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'8px'}}>
+          ${[...myMeals].sort((a,b)=>(b.fav?1:0)-(a.fav?1:0)).map(mm=>html`<div key=${mm.id} style=${{background:C.s1,
+            borderRadius:'12px',padding:'12px 13px',marginBottom:'8px',minHeight:'54px',
+            border:'1px solid '+(mm.fav?C.amber+'55':C.border),display:'flex',alignItems:'center',gap:'9px'}}>
+            <button onClick=${()=>toggleFav(mm)} style=${{background:'none',border:'none',cursor:'pointer',
+              padding:'3px',flexShrink:0,display:'flex'}}>
+              <${Ic} n="star" size=${17} col=${mm.fav?C.amber:C.dim}/></button>
             <div style=${{flex:1,minWidth:0}}>
-              <div style=${{fontSize:'11px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${mm.name}</div>
-              <div style=${{fontSize:'9px',color:C.muted,marginTop:'2px'}}>
+              <div style=${{fontSize:'14px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${mm.name}</div>
+              <div style=${{fontSize:'11px',color:C.muted,marginTop:'2px'}}>
                 ${mm.k} kcal · P${mm.p.toFixed(1)} C${mm.c.toFixed(1)} G${mm.f.toFixed(1)} · ${(mm.items||[]).length} item${(mm.items||[]).length!==1?'s':''}</div>
             </div>
-            <button onClick=${()=>delMyMeal(mm.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
-              <${Ic} n="trash" size=${13} col=${C.dim}/></button>
+            <button onClick=${()=>delMyMeal(mm.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'5px',flexShrink:0}}>
+              <${Ic} n="trash" size=${15} col=${C.dim}/></button>
             <button onClick=${()=>loadMyMeal(mm)} style=${{background:C.accent+'18',border:'none',
-              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+              borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
               display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+              <${Ic} n="plus" size=${17} col=${C.accent}/></button>
           </div>`)}
         </div>`}
 
         ${sub==='alimentos'&&html`<div style=${{marginBottom:'8px'}}>
           ${myFoods.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
             <${Ic} n="utensils" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
-            <div style=${{fontSize:'10px',color:C.muted,lineHeight:'1.6'}}>
+            <div style=${{fontSize:'11px',color:C.muted,lineHeight:'1.6'}}>
               Nenhum alimento próprio.<br/>Todo alimento cadastrado manualmente vem parar aqui.</div>
           </div>`}
-          ${myFoods.map(f=>html`<div key=${f.id} style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',
-            marginBottom:'6px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'8px'}}>
+          ${myFoods.map(f=>html`<div key=${f.id} style=${{background:C.s1,borderRadius:'12px',padding:'12px 13px',
+            marginBottom:'8px',minHeight:'54px',border:'1px solid '+C.border,display:'flex',alignItems:'center',gap:'9px'}}>
             <div onClick=${()=>pickMyFood(f)} style=${{flex:1,minWidth:0,cursor:'pointer'}}>
-              <div style=${{fontSize:'11px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</div>
-              <div style=${{fontSize:'9px',color:C.muted,marginTop:'2px'}}>
+              <div style=${{fontSize:'14px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${f.n}</div>
+              <div style=${{fontSize:'11px',color:C.muted,marginTop:'2px'}}>
                 ${f.k} kcal · P${f.p}g C${f.c}g G${f.f}g / 100g</div>
             </div>
-            <button onClick=${()=>delMyFood(f.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'3px'}}>
-              <${Ic} n="trash" size=${13} col=${C.dim}/></button>
+            <button onClick=${()=>delMyFood(f.id)} style=${{background:'none',border:'none',cursor:'pointer',padding:'5px'}}>
+              <${Ic} n="trash" size=${15} col=${C.dim}/></button>
             <button onClick=${()=>pickMyFood(f)} style=${{background:C.accent+'18',border:'none',
-              borderRadius:'50%',width:'27px',height:'27px',flexShrink:0,cursor:'pointer',
+              borderRadius:'50%',width:'34px',height:'34px',flexShrink:0,cursor:'pointer',
               display:'flex',alignItems:'center',justifyContent:'center'}}>
-              <${Ic} n="plus" size=${14} col=${C.accent}/></button>
+              <${Ic} n="plus" size=${17} col=${C.accent}/></button>
           </div>`)}
         </div>`}
 
