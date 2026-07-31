@@ -35,9 +35,9 @@ input,button,select,textarea{font-family:inherit}
 </div>
 <div id="app"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/preact@10.19.3/dist/preact.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/preact@10.19.3/hooks/dist/hooks.umd.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/preact.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/hooks.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
 const {h,render}=preact;
@@ -404,32 +404,10 @@ function WChart({data,proj}){
 
 /* ── PROJEÇÃO DUPLA ── */
 function Projecao({weights}){
-  const [macroData,setMacroData]=useState({avg:0,days:0,avgProt:0});
+  const [macroData,setMacroData]=useState({avg:0,days:0,avgProt:0,window:21});
   const [trainData,setTrainData]=useState({perWeek:0});
 
-  useEffect(()=>{
-    // Média calórica e de proteína dos últimos 21 dias
-    let totalK=0,totalP=0,count=0;
-    for(let i=0;i<21;i++){
-      const d=ls.g(tkey(i));
-      if(d&&d.meals&&d.meals.length>0){
-        const s=sumM(d.meals);totalK+=s.k;totalP+=s.p;count++;
-      }
-    }
-    setMacroData({avg:count>0?Math.round(totalK/count):0,
-      avgProt:count>0?Math.round(totalP/count):0,days:count});
-
-    // Frequência de treino (últimas 16 semanas)
-    let ci=0;const now=new Date();
-    for(let i=0;i<4;i++){
-      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-      const k=mkey(d.getFullYear(),d.getMonth());
-      const v=ls.g('ci:'+k);ci+=(v&&v.days?v.days.length:0);
-    }
-    setTrainData({perWeek:f2(ci/16)});
-  },[]);
-
-  // Regressão linear (tendência real)
+  // Regressão linear (tendência real) — calculada primeiro pois define a janela de análise dos macros
   const regression=useMemo(()=>{
     if(weights.length<2)return null;
     const ref=new Date(weights[0].date+'T12:00:00').getTime();
@@ -451,24 +429,47 @@ function Projecao({weights}){
     return{slope,lastKg:ys[n-1],weeklyRate,spanDays,points:n,reliable};
   },[weights]);
 
-  // Projeção metabólica (baseada em surplus + frequência de treino)
-  const metabolic=useMemo(()=>{
-    if(!macroData.avg||macroData.days<3||!weights.length)return null;
+  useEffect(()=>{
+    // Janela de análise dos macros alinhada ao período real das pesagens (14–45 dias)
+    const WINDOW=Math.min(45,Math.max(14,Math.round(regression?regression.spanDays:21)));
+    let totalK=0,totalP=0,count=0;
+    for(let i=0;i<WINDOW;i++){
+      const d=ls.g(tkey(i));
+      if(d&&d.meals&&d.meals.length>0){
+        const s=sumM(d.meals);totalK+=s.k;totalP+=s.p;count++;
+      }
+    }
+    setMacroData({avg:count>0?Math.round(totalK/count):0,
+      avgProt:count>0?Math.round(totalP/count):0,days:count,window:WINDOW});
+
+    // Frequência de treino (últimas 4 semanas)
+    let ci=0;const now=new Date();
+    for(let i=0;i<4;i++){
+      const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+      const k=mkey(d.getFullYear(),d.getMonth());
+      const v=ls.g('ci:'+k);ci+=(v&&v.days?v.days.length:0);
+    }
+    setTrainData({perWeek:f2(ci/4)});
+  },[regression&&regression.spanDays]);
+
+  // TDEE calibrado: usa o ritmo REAL da balança + a média REAL de kcal registrada no
+  // mesmo período para resolver a manutenção calórica desta pessoa especificamente,
+  // em vez de estimar com fórmulas genéricas (Harris-Benedict etc.)
+  const calibrated=useMemo(()=>{
+    if(!regression||!regression.reliable)return null;
+    if(!macroData.avg||macroData.days<5)return null;
+    // cobertura mínima: precisa de registros de comida em pelo menos ~35% dos dias da janela
+    if(macroData.days<macroData.window*0.35)return null;
+    const tdee=Math.round(macroData.avg-(regression.weeklyRate*7700/7));
+    if(tdee<1000||tdee>6000)return null; // fora da faixa humana plausível → dado ruidoso demais
     const goals=ls.g('goals')||GOALS;
-    const dailySurplus=macroData.avg-goals.kcal;
-    // 7700 kcal ≈ 1 kg (massa corporal)
-    const rawWeekly=(dailySurplus*7)/7700;
-    // Fator de treino: mais treino = mais vai para músculo (eficiência)
-    const trainFactor=Math.min(trainData.perWeek/5,1);
-    // Fator de proteína: proteína adequada maximiza ganho muscular
-    const protFactor=Math.min(macroData.avgProt/goals.protein,1);
-    // Ganho ajustado: treino e proteína melhoram qualidade, não volume
-    const adjusted=f2(rawWeekly*(0.5+0.3*trainFactor+0.2*protFactor));
+    const rateAtGoal=f2((goals.kcal-tdee)*7/7700);
     const lastKg=weights[weights.length-1].kg;
-    return{weeklyRate:adjusted,rawWeekly:f2(rawWeekly),
-      proj4:f2(lastKg+adjusted*4),proj8:f2(lastKg+adjusted*8),proj12:f2(lastKg+adjusted*12),
-      dailySurplus:Math.round(dailySurplus),trainFactor,protFactor};
-  },[macroData,trainData,weights]);
+    return{tdee,rateAtGoal,
+      proj4:f2(lastKg+rateAtGoal*4),proj8:f2(lastKg+rateAtGoal*8),proj12:f2(lastKg+rateAtGoal*12),
+      adherencePct:goals.kcal>0?Math.round(macroData.avg/goals.kcal*100):null,
+      coverage:macroData.days,window:macroData.window};
+  },[regression,macroData,weights]);
 
   if(weights.length<2)return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'14px',
     border:'1px solid '+C.border,textAlign:'center',color:C.muted,fontSize:'11px'}}>
@@ -481,27 +482,28 @@ function Projecao({weights}){
 
   const {lastKg,weeklyRate}=regression;
   const goals=ls.g('goals')||GOALS;
-  const surplus=macroData.avg>0?macroData.avg-goals.kcal:null;
 
   // Pontos para o gráfico (histórico + 2 projeções)
   const projTrend=[4,8].map(w=>({kg:f2(lastKg+weeklyRate*w)}));
-  const projMeta=metabolic?[4,8].map(w=>({kg:f2(lastKg+metabolic.weeklyRate*w)})):null;
+  const projMeta=calibrated?[4,8].map(w=>({kg:f2(lastKg+calibrated.rateAtGoal*w)})):null;
 
-  // Gap entre projeções (revela subregistro ou retenção hídrica)
-  const gap=metabolic?f2(weeklyRate-metabolic.weeklyRate):null;
+  // Diferença entre o ritmo real e o ritmo se batesse a meta de kcal (revela o quanto
+  // a aderência à dieta está custando de progresso, calibrado ao seu próprio TDEE)
+  const gap=calibrated?f2(calibrated.rateAtGoal-weeklyRate):null;
 
-  // Insight principal
+  // Insight principal — sempre ancorado no ritmo real e, quando possível, no TDEE calibrado
   const insight=(()=>{
     if(weights.length<3)return{txt:'Registre o peso semanalmente (mesmo dia/hora) para maior precisão.',col:C.muted};
-    if(!metabolic||macroData.days<5)return{txt:'Registre as refeições por pelo menos 5 dias para ativar a projeção metabólica.',col:C.blue};
-    if(gap!==null&&Math.abs(gap)>0.3)
-      return gap>0
-        ? {txt:`Você ganha mais que o previsto (+${gap.toFixed(2)} kg/sem). Pode haver retenção hídrica ou excesso calórico não registrado.`,col:C.amber}
-        : {txt:`Você ganha menos que o esperado (${gap.toFixed(2)} kg/sem vs previsto). Verifique se todas as refeições estão sendo registradas.`,col:C.amber};
-    if(weeklyRate>0.5)return{txt:`Ritmo de ganho alto (+${weeklyRate.toFixed(2)} kg/sem). Para bulk limpo, reduza ~${Math.round((weeklyRate-0.35)*7700/7)} kcal/dia.`,col:C.red};
-    if(weeklyRate>=0.15)return{txt:`Progressão ideal (+${weeklyRate.toFixed(2)} kg/sem). No ritmo atual você chegará a ${f2(lastKg+weeklyRate*12).toFixed(1)} kg em 12 semanas.`,col:C.ok};
-    if(weeklyRate>-0.05)return{txt:`Peso estável. Aumente ~${Math.round((0.3*7700)/7)} kcal/dia para entrar em superávit de ganho.`,col:C.blue};
-    return{txt:`Perda de peso detectada (${weeklyRate.toFixed(2)} kg/sem). Aumente as calorias diárias.`,col:C.red};
+    if(!calibrated){
+      if(macroData.days<5)return{txt:'Registre as refeições por pelo menos 5 dias (na mesma janela das pesagens) para calcular seu gasto calórico real.',col:C.blue};
+      return{txt:'Registros de peso e de refeições ainda não se sobrepõem o bastante para calcular um TDEE confiável — continue registrando os dois.',col:C.blue};
+    }
+    if(calibrated.adherencePct!==null&&calibrated.adherencePct<85&&gap!==null&&gap>0.15)
+      return{txt:`Sua média é ${macroData.avg} kcal/dia (${calibrated.adherencePct}% da meta de ${goals.kcal}). Batendo a meta, o ritmo passaria de ${weeklyRate>=0?'+':''}${weeklyRate.toFixed(2)} para ~${calibrated.rateAtGoal>=0?'+':''}${calibrated.rateAtGoal.toFixed(2)} kg/sem.`,col:C.amber};
+    if(weeklyRate>0.6)return{txt:`Ritmo de ganho alto (+${weeklyRate.toFixed(2)} kg/sem, TDEE calculado ~${calibrated.tdee} kcal). Para um bulk mais limpo, reduza ~${Math.round((weeklyRate-0.35)*7700/7)} kcal/dia.`,col:C.red};
+    if(weeklyRate>=0.15)return{txt:`Progressão dentro do ideal (+${weeklyRate.toFixed(2)} kg/sem). Seu TDEE calculado é ~${calibrated.tdee} kcal — nesse ritmo você chega a ${f2(lastKg+weeklyRate*12).toFixed(1)} kg em 12 semanas.`,col:C.ok};
+    if(weeklyRate>-0.05)return{txt:`Peso estável (TDEE calculado ~${calibrated.tdee} kcal). Suba ~${Math.round((0.3*7700)/7)} kcal/dia sobre esse valor para entrar em superávit de ganho.`,col:C.blue};
+    return{txt:`Perda de peso detectada (${weeklyRate.toFixed(2)} kg/sem, TDEE calculado ~${calibrated.tdee} kcal). Aumente a ingestão calórica.`,col:C.red};
   })();
 
   return html`<div>
@@ -514,8 +516,8 @@ function Projecao({weights}){
           <span style=${{display:'flex',alignItems:'center',gap:'4px'}}>
             <svg width="14" height="4"><line x1="0" y1="2" x2="14" y2="2" stroke=${C.accent} stroke-width="1.5"/></svg>Real
           </span>
-          ${metabolic&&html`<span style=${{display:'flex',alignItems:'center',gap:'4px'}}>
-            <svg width="14" height="4"><line x1="0" y1="2" x2="14" y2="2" stroke=${C.ok} stroke-width="1.5" stroke-dasharray="3 2"/></svg>Metabólica
+          ${calibrated&&html`<span style=${{display:'flex',alignItems:'center',gap:'4px'}}>
+            <svg width="14" height="4"><line x1="0" y1="2" x2="14" y2="2" stroke=${C.ok} stroke-width="1.5" stroke-dasharray="3 2"/></svg>Na meta
           </span>`}
         </div>
       </div>
@@ -528,8 +530,8 @@ function Projecao({weights}){
             ${f2(lastKg+weeklyRate*s[1]).toFixed(1)}kg</div>
           <div style=${{fontSize:'8px',color:weeklyRate>=0?C.ok:C.red,fontWeight:700}}>
             ${(weeklyRate*s[1]>=0?'+':'')+f2(weeklyRate*s[1]).toFixed(2)}kg</div>
-          ${metabolic&&html`<div style=${{fontSize:'8px',color:C.ok+'99',marginTop:'2px'}}>
-            ${(metabolic.weeklyRate*s[1]>=0?'+':'')+f2(metabolic.weeklyRate*s[1]).toFixed(2)} prev.
+          ${calibrated&&html`<div style=${{fontSize:'8px',color:C.ok+'99',marginTop:'2px'}}>
+            ${(calibrated.rateAtGoal*s[1]>=0?'+':'')+f2(calibrated.rateAtGoal*s[1]).toFixed(2)} na meta
           </div>`}
         </div>`)}
       </div>
@@ -546,24 +548,24 @@ function Projecao({weights}){
         <div style=${{fontSize:'9px',color:C.dim}}>ideal: +0.15 a +0.50</div>
       </div>
       <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
-        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Ritmo metabólico</div>
-        ${metabolic?html`<div style=${{fontSize:'15px',fontWeight:900,color:C.ok}}>
-          ${metabolic.weeklyRate>=0?'+':''}${metabolic.weeklyRate.toFixed(2)} kg/sem</div>
-          <div style=${{fontSize:'9px',color:C.dim}}>surplus: ${metabolic.dailySurplus>=0?'+':''}${metabolic.dailySurplus} kcal/dia</div>`
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>TDEE calculado</div>
+        ${calibrated?html`<div style=${{fontSize:'15px',fontWeight:900,color:C.ok}}>~${calibrated.tdee} kcal</div>
+          <div style=${{fontSize:'9px',color:C.dim}}>peso real + ${calibrated.coverage} registro(s)</div>`
         :html`<div style=${{fontSize:'11px',color:C.dim,marginTop:'4px'}}>Registre macros ≥5 dias</div>`}
       </div>
       <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
-        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Frequência treino</div>
-        <div style=${{fontSize:'15px',fontWeight:900,color:trainData.perWeek>=4?C.ok:trainData.perWeek>=3?C.amber:C.red}}>
-          ${trainData.perWeek.toFixed(1)}×/sem</div>
-        <div style=${{fontSize:'9px',color:C.dim}}>meta: 5×/sem</div>
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Aderência à meta</div>
+        ${calibrated&&calibrated.adherencePct!==null?html`<div style=${{fontSize:'15px',fontWeight:900,
+            color:calibrated.adherencePct>=90?C.ok:calibrated.adherencePct>=75?C.amber:C.red}}>
+            ${calibrated.adherencePct}%</div>
+          <div style=${{fontSize:'9px',color:C.dim}}>média ${macroData.avg} de ${goals.kcal} kcal</div>`
+        :html`<div style=${{fontSize:'11px',color:C.dim,marginTop:'4px'}}>Dados insuficientes</div>`}
       </div>
       <div style=${{background:C.s1,borderRadius:'10px',padding:'10px 11px',border:'1px solid '+C.border}}>
-        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Gap projeções</div>
-        ${gap!==null?html`<div style=${{fontSize:'15px',fontWeight:900,
-          color:Math.abs(gap)<0.15?C.ok:C.amber}}>
-          ${gap>=0?'+':''}${gap.toFixed(2)} kg/sem</div>
-          <div style=${{fontSize:'9px',color:C.dim}}>${Math.abs(gap)<0.15?'projeções alinhadas':'verificar registros'}</div>`
+        <div style=${{fontSize:'8px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'4px'}}>Se bater a meta</div>
+        ${calibrated?html`<div style=${{fontSize:'15px',fontWeight:900,color:C.ok}}>
+          ${calibrated.rateAtGoal>=0?'+':''}${calibrated.rateAtGoal.toFixed(2)} kg/sem</div>
+          <div style=${{fontSize:'9px',color:C.dim}}>${gap!==null?(gap>=0?'+':'')+gap.toFixed(2)+' kg/sem vs. atual':''}</div>`
         :html`<div style=${{fontSize:'11px',color:C.dim,marginTop:'4px'}}>Dados insuficientes</div>`}
       </div>
     </div>
@@ -576,8 +578,9 @@ function Projecao({weights}){
     </div>
 
     <div style=${{marginTop:'10px',fontSize:'9px',color:C.dim,lineHeight:'1.6',padding:'0 2px'}}>
-      <strong style=${{color:C.muted}}>Ritmo real</strong> — regressão linear nos seus pesos registrados. 
-      <strong style=${{color:C.muted}}>Ritmo metabólico</strong> — estimativa com base no surplus calórico diário × frequência de treino × proteína. O gap entre as duas revela subregistro de alimentos ou retenção hídrica.
+      <strong style=${{color:C.muted}}>Ritmo real</strong> — regressão linear nos seus pesos registrados (única fonte da projeção "Real"). 
+      <strong style=${{color:C.muted}}>TDEE calculado</strong> — sua manutenção calórica real, resolvida a partir do seu ritmo de balança e da sua média de kcal registrada no mesmo período (não é uma fórmula genérica). 
+      <strong style=${{color:C.muted}}>Se bater a meta</strong> — o que aconteceria se você comesse os ${goals.kcal} kcal da meta todo dia, dado esse TDEE. Treinos/semana atuais: ${trainData.perWeek.toFixed(1)}×.
     </div>
   </div>`;
 }
@@ -1054,10 +1057,52 @@ function Checkin(){
 
 /* ── TAB PESO ── */
 function MetaPeso({ws}){
-  const mt=getMetas();
+  const [mt,setMt]=useState(()=>getMetas());
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState('');
   const cur=ws.length?ws[ws.length-1].kg:null;
-  const start=mt.startKg!=null?mt.startKg:(ws.length?ws[0].kg:null);
-  if(mt.targetKg==null||cur==null||start==null)return null;
+  if(cur==null)return null;
+  const start=mt.startKg!=null?mt.startKg:ws[0].kg;
+
+  const openEdit=()=>{setVal(mt.targetKg!=null?String(mt.targetKg):'');setEditing(true);};
+  const saveTarget=()=>{
+    const n=Number(String(val).replace(',','.'));
+    if(!n||n<=0){setEditing(false);return;}
+    const next=Object.assign({},mt,{targetKg:f2(n)});
+    ls.s('metas',next);setMt(next);setEditing(false);
+  };
+
+  if(!mt.targetKg&&!editing){
+    return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',
+      border:'1px dashed '+C.border,display:'flex',alignItems:'center',justifyContent:'space-between',gap:'10px'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:'7px'}}>
+        <${Ic} n="target" size=${14} col=${C.muted}/>
+        <span style=${{fontSize:'11px',color:C.muted}}>Nenhuma meta de peso definida</span>
+      </div>
+      <button onClick=${openEdit} style=${{padding:'7px 12px',background:C.accent+'18',border:'1px solid '+C.accent+'44',
+        borderRadius:'7px',color:C.accent,fontSize:'10px',fontWeight:700,cursor:'pointer'}}>Definir</button>
+    </div>`;
+  }
+
+  if(editing){
+    return html`<div style=${{background:C.s1,borderRadius:'13px',padding:'13px',marginBottom:'10px',border:'1px solid '+C.accent+'55'}}>
+      <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',marginBottom:'8px',
+        display:'flex',alignItems:'center',gap:'6px'}}>
+        <${Ic} n="target" size=${12} col=${C.muted}/>Editar meta de peso</div>
+      <div style=${{display:'flex',gap:'7px'}}>
+        <input type="number" step="0.1" autofocus value=${val} onInput=${e=>setVal(e.target.value)}
+          onKeyDown=${e=>e.key==='Enter'&&saveTarget()} placeholder="Ex: 80"
+          style=${{flex:1,padding:'9px 11px',background:C.bg,border:'1px solid '+C.border,borderRadius:'8px',
+            color:C.text,fontSize:'14px',fontWeight:700,outline:'none'}}/>
+        <span style=${{display:'flex',alignItems:'center',color:C.muted,fontSize:'11px'}}>kg</span>
+        <button onClick=${saveTarget} style=${{padding:'9px 14px',background:C.accent,border:'none',borderRadius:'8px',
+          color:'#fff',fontSize:'11px',fontWeight:700,cursor:'pointer'}}>Salvar</button>
+        <button onClick=${()=>setEditing(false)} style=${{padding:'9px 12px',background:'none',border:'1px solid '+C.border,
+          borderRadius:'8px',color:C.muted,fontSize:'11px',cursor:'pointer'}}>×</button>
+      </div>
+    </div>`;
+  }
+
   const total=mt.targetKg-start,done=cur-start;
   const pct=total!==0?Math.max(0,Math.min(100,(done/total)*100)):0;
   const falta=f2(mt.targetKg-cur);
@@ -1072,12 +1117,18 @@ function MetaPeso({ws}){
       <span style=${{fontSize:'9px',color:C.muted,letterSpacing:'2px',textTransform:'uppercase',
         display:'flex',alignItems:'center',gap:'6px'}}>
         <${Ic} n="target" size=${12} col=${C.muted}/>Meta de peso</span>
-      <span style=${{fontSize:'10px',fontWeight:800,color:C.accent}}>${Math.round(pct)}%</span>
+      <div style=${{display:'flex',alignItems:'center',gap:'8px'}}>
+        <span style=${{fontSize:'10px',fontWeight:800,color:C.accent}}>${Math.round(pct)}%</span>
+        <button onClick=${openEdit} style=${{background:'none',border:'none',cursor:'pointer',padding:'2px',
+          display:'flex',alignItems:'center'}}>
+          <${Ic} n="pencil" size=${12} col=${C.muted}/></button>
+      </div>
     </div>
     <div style=${{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:'6px'}}>
       <span style=${{fontSize:'10px',color:C.muted}}>${start.toFixed(1)} kg</span>
       <span style=${{fontSize:'19px',fontWeight:900,color:C.text}}>${cur.toFixed(1)} kg</span>
-      <span style=${{fontSize:'10px',color:C.ok,fontWeight:700}}>${mt.targetKg.toFixed(1)} kg</span>
+      <span onClick=${openEdit} style=${{fontSize:'10px',color:C.ok,fontWeight:700,cursor:'pointer',
+        textDecoration:'underline dotted'}}>${mt.targetKg.toFixed(1)} kg</span>
     </div>
     <div style=${{height:'7px',background:C.bg,borderRadius:'4px',overflow:'hidden',marginBottom:'10px'}}>
       <div style=${{width:pct+'%',height:'100%',background:'linear-gradient(90deg,'+C.accent+','+C.ok+')',
@@ -2396,7 +2447,7 @@ document.getElementById('splash').style.display='none';
     icons:[{src:ico,sizes:"512x512",type:"image/png",purpose:"any maskable"}]};
   document.getElementById('mfst').href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:'application/json'}));
   if('serviceWorker' in navigator){
-    var sw='const V="t3",U=["https://cdn.jsdelivr.net/npm/preact@10.19.3/dist/preact.umd.js","https://cdn.jsdelivr.net/npm/preact@10.19.3/hooks/dist/hooks.umd.js","https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.umd.js"];self.addEventListener("install",e=>e.waitUntil(caches.open(V).then(c=>c.addAll(U).catch(()=>{}))));self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k))))));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));';
+    var sw='const V="t4",U=["https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/preact.min.js","https://cdnjs.cloudflare.com/ajax/libs/preact/10.27.2/hooks.umd.js","https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"];self.addEventListener("install",e=>e.waitUntil(caches.open(V).then(c=>c.addAll(U).catch(()=>{}))));self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==V).map(k=>caches.delete(k))))));self.addEventListener("fetch",e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));';
     try{navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:'application/javascript'}))).catch(function(){});}catch(e){}
   }
 })();
