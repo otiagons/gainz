@@ -43,7 +43,7 @@ input,button,select,textarea{font-family:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
-const BUILD='2026.07.31-8';
+const BUILD='2026.07.31-12';
 const {h,render}=preact;
 const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
 const html=htm.bind(h);
@@ -729,30 +729,6 @@ function Treino(){
   const ac=activeDay?(activeDay.col||C.accent):C.accent;
 
   return html`<div style=${{padding:'0 14px 20px'}}>
-    <button onClick=${()=>setShowEvolve(true)} style=${{width:'100%',display:'flex',alignItems:'center',
-      justifyContent:'center',gap:'7px',padding:'12px',marginBottom:'8px',
-      background:dueForUpdate?C.amber:C.s1,border:'1px solid '+(dueForUpdate?C.amber:C.border),
-      borderRadius:'11px',color:dueForUpdate?'#000':C.text,fontSize:'12px',fontWeight:800,
-      letterSpacing:'.5px',cursor:'pointer'}}>
-      <${Ic} n="bolt" size=${15} col=${dueForUpdate?'#000':C.accent}/>EVOLUIR TREINO
-    </button>
-    <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',
-      background:dueForUpdate?C.amber+'14':C.s1,border:'1px solid '+(dueForUpdate?C.amber+'55':C.border),
-      borderRadius:'10px',padding:'8px 11px',marginBottom:'16px'}}>
-      <div style=${{display:'flex',alignItems:'center',gap:'7px',minWidth:0}}>
-        <${Ic} n=${dueForUpdate?'bell':'clock'} size=${13} col=${dueForUpdate?C.amber:C.muted}/>
-        <span style=${{fontSize:'10px',color:dueForUpdate?C.amber:C.muted,fontWeight:dueForUpdate?700:400}}>
-          ${dueForUpdate
-            ?'Hora de evoluir · '+wks+' semana'+(wks!==1?'s':'')+' no mesmo treino'
-            :wks+' semana'+(wks!==1?'s':'')+' neste treino · aviso em '+thresh}
-        </span>
-      </div>
-      <button onClick=${restartCount} title="Reiniciar contagem" style=${{background:'none',border:'none',
-        color:C.dim,cursor:'pointer',padding:'4px',flexShrink:0,display:'flex'}}>
-        <${Ic} n="reset" size=${13} col=${C.dim}/>
-      </button>
-    </div>
-
     <div style=${{display:'flex',gap:'6px',marginBottom:'6px'}}>
       ${program.map((day,i)=>{
         const c=day.col||C.muted,isAc=activeId===day.id;
@@ -768,7 +744,7 @@ function Treino(){
     </div>
 
     ${activeDay&&html`<div style=${{marginTop:'18px'}}>
-      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
+      <div style=${{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
         <div style=${{minWidth:0}}>
           <span style=${{fontSize:'9px',fontWeight:700,letterSpacing:'2px',color:ac,textTransform:'uppercase'}}>${activeDay.tag}</span>
           <div style=${{fontSize:'17px',fontWeight:900,marginTop:'2px'}}>${activeDay.title}</div>
@@ -780,19 +756,13 @@ function Treino(){
         </button>
       </div>
 
-      <div style=${{background:C.s1,borderRadius:'9px',padding:'9px 11px',borderLeft:'2px solid '+ac,marginBottom:'16px'}}>
-        ${activeDay.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',
-          display:'flex',alignItems:'center',gap:'5px'}}>
-          <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
-      </div>
-
       ${activeDay.ex.length===0&&html`<div style=${{textAlign:'center',padding:'30px 0',color:C.dim,fontSize:'11px'}}>
         Nenhum exercício ainda neste dia. Toque em editar para adicionar.</div>`}
       ${activeDay.ex.map((ex,i)=>html`<div key=${i} style=${{display:'flex',alignItems:'center',gap:'10px',
-        background:C.s1,border:'1px solid '+C.border,borderRadius:'12px',padding:'12px 13px',marginBottom:'9px'}}>
+        background:C.s1,border:'1px solid '+C.border,borderRadius:'12px',padding:'9px 13px',marginBottom:'6px'}}>
         <div style=${{flex:1,minWidth:0}}>
           <div style=${{fontSize:'14px',fontWeight:800,lineHeight:'1.3'}}>${ex.n}</div>
-          <div style=${{display:'flex',alignItems:'center',gap:'6px',marginTop:'6px',flexWrap:'wrap'}}>
+          <div style=${{display:'flex',alignItems:'center',gap:'6px',marginTop:'4px',flexWrap:'wrap'}}>
             <span style=${{fontSize:'10px',fontWeight:700,color:ac,background:tagDim(ac),padding:'2px 7px',borderRadius:'5px'}}>${ex.d}</span>
             ${ex.ss&&html`<span style=${{fontSize:'8px',fontWeight:700,color:ac,background:tagDim(ac),padding:'1px 5px',borderRadius:'4px'}}>SS</span>`}
             ${ex.note&&html`<span style=${{fontSize:'9px',fontStyle:'italic',color:C.muted}}>${ex.note}</span>`}
@@ -805,7 +775,37 @@ function Treino(){
           <${Ic} n="play" size=${16} col=${C.blue}/>
         </a>
       </div>`)}
+
+      <div style=${{background:C.s1,borderRadius:'9px',padding:'9px 11px',borderLeft:'2px solid '+ac,margin:'20px 0 14px'}}>
+        ${activeDay.rest.map((r,i)=>html`<div key=${i} style=${{fontSize:'10px',color:C.muted,lineHeight:'1.9',
+          display:'flex',alignItems:'center',gap:'5px'}}>
+          <${Ic} n="clock" size=${10} col=${C.dim}/>${r}</div>`)}
+      </div>
     </div>`}
+
+    <button onClick=${()=>setShowEvolve(true)} style=${{width:'100%',display:'flex',alignItems:'center',
+      justifyContent:'center',gap:'7px',padding:'12px',marginBottom:'8px',
+      background:dueForUpdate?C.amber:C.s1,border:'1px solid '+(dueForUpdate?C.amber:C.border),
+      borderRadius:'11px',color:dueForUpdate?'#000':C.text,fontSize:'12px',fontWeight:800,
+      letterSpacing:'.5px',cursor:'pointer'}}>
+      <${Ic} n="bolt" size=${15} col=${dueForUpdate?'#000':C.accent}/>EVOLUIR TREINO
+    </button>
+    <div style=${{display:'flex',alignItems:'center',justifyContent:'space-between',gap:'8px',
+      background:dueForUpdate?C.amber+'14':C.s1,border:'1px solid '+(dueForUpdate?C.amber+'55':C.border),
+      borderRadius:'10px',padding:'8px 11px'}}>
+      <div style=${{display:'flex',alignItems:'center',gap:'7px',minWidth:0}}>
+        <${Ic} n=${dueForUpdate?'bell':'clock'} size=${13} col=${dueForUpdate?C.amber:C.muted}/>
+        <span style=${{fontSize:'10px',color:dueForUpdate?C.amber:C.muted,fontWeight:dueForUpdate?700:400}}>
+          ${dueForUpdate
+            ?'Hora de evoluir · '+wks+' semana'+(wks!==1?'s':'')+' no mesmo treino'
+            :wks+' semana'+(wks!==1?'s':'')+' neste treino · aviso em '+thresh}
+        </span>
+      </div>
+      <button onClick=${restartCount} title="Reiniciar contagem" style=${{background:'none',border:'none',
+        color:C.dim,cursor:'pointer',padding:'4px',flexShrink:0,display:'flex'}}>
+        <${Ic} n="reset" size=${13} col=${C.dim}/>
+      </button>
+    </div>
 
     ${editDayObj&&html`<${DayScreen} day=${editDayObj} program=${program} setProgram=${setProgram} addDay=${addDay}
       onUpdate=${patch=>updateDay(editDayObj.id,patch)}
@@ -1456,6 +1456,7 @@ function Macros(){
   const [expanded,setExpanded]=useState(null);
   const [expMeals,setExpMeals]=useState([]);
   const [histEditMeal,setHistEditMeal]=useState(null);
+  const [showRetroAdd,setShowRetroAdd]=useState(false);
   const [period,setPeriod]=useState('diario');
   const k=tkey(0);
 
@@ -1685,12 +1686,13 @@ function Macros(){
       </div>
 
       ${period==='diario'&&html`<div>
-        ${hist.map(day=>{
+        ${hist.map((day,idx)=>{
           const isYesterday=day.key===tkey(1);
           const dateStr=day.key.replace('tk:','');
           const pct=goals.kcal>0?(day.k/goals.kcal)*100:0;
           const hits=day.count>0?macroHits(day,goals):0;
           const dotCol=day.count===0?C.dim:hits<=1?C.red:hits<=3?C.amber:C.ok;
+          const canRetroAdd=idx<3; // só últimos 3 dias — refeições esquecidas ainda lembradas
           return html`<div key=${day.key} style=${{background:C.s1,borderRadius:'13px',padding:'12px 14px',
             marginBottom:'8px',border:'1px solid '+C.border,cursor:'pointer'}} onClick=${()=>toggleDay(day.key)}>
             <div style=${{display:'flex',alignItems:'center',gap:'12px'}}>
@@ -1737,6 +1739,11 @@ function Macros(){
               </div>`)}
               ${expMeals.length===0&&html`<div style=${{textAlign:'center',padding:'12px 0',fontSize:'10px',color:C.muted}}>
                 Nenhuma refeição registrada neste dia</div>`}
+              ${canRetroAdd&&html`<button onClick=${()=>setShowRetroAdd(true)} style=${{width:'100%',
+                display:'flex',alignItems:'center',justifyContent:'center',gap:'6px',padding:'9px',
+                marginTop:'9px',background:C.bg,border:'1px dashed '+C.border,borderRadius:'8px',
+                color:C.muted,fontSize:'10px',fontWeight:700,cursor:'pointer'}}>
+                <${Ic} n="plus" size=${12} col=${C.muted}/>Adicionar refeição esquecida</button>`}
             </div>`}
           </div>`;
         })}
@@ -1788,6 +1795,9 @@ function Macros(){
     ${histEditMeal&&html`<${EditMealModal} meal=${histEditMeal}
       onSave=${updated=>{saveExp(expMeals.map(m=>m.id===updated.id?updated:m));setHistEditMeal(null);}}
       onClose=${()=>setHistEditMeal(null)}/>`}
+    ${showRetroAdd&&expanded&&html`<${AddMeal} dateLabel=${ptDate(expanded.replace('tk:',''))}
+      onSave=${m=>{saveExp([...expMeals.filter(x=>!x.estimated),m]);setShowRetroAdd(false);}}
+      onClose=${()=>setShowRetroAdd(false)}/>`}
   </div>`;}
 
 /* ── EDIT MEAL MODAL ── */
@@ -1961,7 +1971,7 @@ function EditMealModal({meal,onSave,onClose}){
 const MEAL_OPTIONS=['Café da manhã','Almoço','Lanche','Jantar','Outro'];
 const CORE4=['Café da manhã','Almoço','Lanche','Jantar'];
 
-function AddMeal({onSave,onClose,mealName}){
+function AddMeal({onSave,onClose,mealName,dateLabel}){
   const locked=!!mealName;
   const [mode,setMode]=useState('search');
   const [sub,setSub]=useState('todos');
@@ -2041,6 +2051,29 @@ function AddMeal({onSave,onClose,mealName}){
 
   const totals=sumM(items);
 
+  const itemsBox=items.length>0&&html`<div style=${{background:C.s1,border:'1px solid '+C.border,
+    borderRadius:'12px',padding:'12px 13px',marginBottom:'12px'}}>
+    <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'4px'}}>
+      Nesta refeição (${items.length})</div>
+    ${items.map((item,i)=>html`<div key=${item.id} style=${{display:'flex',justifyContent:'space-between',
+      alignItems:'center',gap:'8px',padding:'9px 0',borderTop:i>0?'1px solid '+C.border+'88':'none'}}>
+      <div style=${{flex:1,minWidth:0}}>
+        <div style=${{fontSize:'13px',fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${item.food}</div>
+        <div style=${{fontSize:'10px',color:C.muted,marginTop:'2px'}}>${item.qty}${item.unit} · ${item.k} kcal</div>
+      </div>
+      <button onClick=${()=>setItems(p=>p.filter(x=>x.id!==item.id))} style=${{width:'34px',height:'34px',
+        borderRadius:'50%',background:C.red+'14',border:'none',cursor:'pointer',flexShrink:0,
+        display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <${Ic} n="trash" size=${15} col=${C.red}/></button>
+    </div>`)}
+    <div style=${{borderTop:'1px solid '+C.border,paddingTop:'9px',marginTop:'2px',display:'flex',gap:'10px',flexWrap:'wrap'}}>
+      <span style=${{fontSize:'12px',fontWeight:800,color:C.accent}}>${totals.k} kcal</span>
+      <span style=${{fontSize:'11px',color:C.blue}}>P ${totals.p.toFixed(1)}g</span>
+      <span style=${{fontSize:'11px',color:C.purple}}>C ${totals.c.toFixed(1)}g</span>
+      <span style=${{fontSize:'11px',color:C.amber}}>G ${totals.f.toFixed(1)}g</span>
+    </div>
+  </div>`;
+
   // Photo analysis
   const analyzePhoto=async file=>{
     const ak=localStorage.getItem('ak');
@@ -2099,8 +2132,13 @@ function AddMeal({onSave,onClose,mealName}){
         padding:'2px',display:'flex',alignItems:'center',flexShrink:0}}>
         <${Ic} n="back" size=${22} col=${C.text}/>
       </button>
-      <span style=${{fontSize:locked?'17px':'14px',fontWeight:900,flex:1,overflow:'hidden',
-        textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${locked?mealName:'Adicionar Refeição'}</span>
+      <div style=${{flex:1,minWidth:0}}>
+        <div style=${{fontSize:locked?'17px':'14px',fontWeight:900,overflow:'hidden',
+          textOverflow:'ellipsis',whiteSpace:'nowrap'}}>${locked?mealName:'Adicionar Refeição'}</div>
+        ${dateLabel&&html`<div style=${{fontSize:'10px',color:C.amber,fontWeight:700,marginTop:'1px',
+          display:'flex',alignItems:'center',gap:'4px'}}>
+          <${Ic} n="clock" size=${10} col=${C.amber}/>${dateLabel}</div>`}
+      </div>
     </div>
     <div style=${{flex:1,overflowY:'auto',padding:'14px 15px 60px'}}>
 
@@ -2291,6 +2329,8 @@ function AddMeal({onSave,onClose,mealName}){
           </div>`;
         })()}
 
+        ${itemsBox}
+
         ${showC&&html`<div style=${{background:C.s1,borderRadius:'9px',padding:'11px',marginBottom:'8px',border:'1px solid '+C.border}}>
           <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1px',textTransform:'uppercase',marginBottom:'7px'}}>Cadastro manual (por 100g)</div>
           <input value=${cust.name} onInput=${e=>setCust(p=>({...p,name:e.target.value}))} placeholder="Nome"
@@ -2352,6 +2392,7 @@ function AddMeal({onSave,onClose,mealName}){
         </div>`}
 
         ${sub==='refeicoes'&&html`<div style=${{marginBottom:'8px'}}>
+          ${itemsBox}
           ${myMeals.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
             <${Ic} n="star" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
             <div style=${{fontSize:'11px',color:C.muted,lineHeight:'1.6'}}>
@@ -2378,6 +2419,7 @@ function AddMeal({onSave,onClose,mealName}){
         </div>`}
 
         ${sub==='alimentos'&&html`<div style=${{marginBottom:'8px'}}>
+          ${itemsBox}
           ${myFoods.length===0&&html`<div style=${{textAlign:'center',padding:'26px 12px'}}>
             <${Ic} n="utensils" size=${30} col=${C.dim} style=${{marginBottom:'9px'}}/>
             <div style=${{fontSize:'11px',color:C.muted,lineHeight:'1.6'}}>
@@ -2397,26 +2439,6 @@ function AddMeal({onSave,onClose,mealName}){
               display:'flex',alignItems:'center',justifyContent:'center'}}>
               <${Ic} n="plus" size=${17} col=${C.accent}/></button>
           </div>`)}
-        </div>`}
-
-        ${items.length>0&&html`<div style=${{background:C.s1,borderRadius:'9px',padding:'9px',marginBottom:'8px'}}>
-          ${items.map(item=>html`<div key=${item.id} style=${{display:'flex',justifyContent:'space-between',
-            alignItems:'center',marginBottom:'4px'}}>
-            <div><span style=${{fontSize:'10px',fontWeight:600}}>${item.food}</span>
-              <span style=${{fontSize:'9px',color:C.muted,marginLeft:'4px'}}>${item.qty}${item.unit}</span></div>
-            <div style=${{display:'flex',gap:'8px',alignItems:'center'}}>
-              <span style=${{fontSize:'10px',color:C.accent,fontWeight:700}}>${item.k} kcal</span>
-              <button onClick=${()=>setItems(p=>p.filter(x=>x.id!==item.id))}
-                style=${{background:'none',border:'none',cursor:'pointer'}}>
-                <${Ic} n="trash" size=${12} col=${C.dim}/></button>
-            </div>
-          </div>`)}
-          <div style=${{borderTop:'1px solid '+C.border,paddingTop:'6px',marginTop:'4px',display:'flex',gap:'10px',flexWrap:'wrap'}}>
-            <span style=${{fontSize:'10px',fontWeight:700,color:C.accent}}>${totals.k} kcal</span>
-            <span style=${{fontSize:'9px',color:C.blue}}>P ${totals.p.toFixed(2)}g</span>
-            <span style=${{fontSize:'9px',color:C.purple}}>C ${totals.c.toFixed(2)}g</span>
-            <span style=${{fontSize:'9px',color:C.amber}}>G ${totals.f.toFixed(2)}g</span>
-          </div>
         </div>`}
 
         ${items.length>0&&html`<div>
