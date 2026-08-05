@@ -1664,13 +1664,16 @@ function Macros(){
           </div>`)}
         </div>`;})()}
 
-      <div onClick=${()=>setAddCtx('')} style=${{textAlign:'center',padding:'12px 0 4px',cursor:'pointer'}}>
-        <span style=${{fontSize:'11px',color:C.muted,fontWeight:600}}>+ outra refeição</span>
-      </div>
+      <button onClick=${()=>setAddCtx('')} style=${{width:'100%',padding:'10px',
+        background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
+        fontWeight:700,cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',
+        justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
+        <${Ic} n="plus" size=${13} col=${C.muted}/>OUTRA REFEIÇÃO
+      </button>
 
       ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
         background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
-        fontWeight:700,cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',
+        fontWeight:700,cursor:'pointer',marginTop:'8px',display:'flex',alignItems:'center',
         justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
         <${Ic} n="reset" size=${13} col=${C.muted}/>REPLICAR REFEIÇÕES DE ONTEM (${yMeals.length})
       </button>`}
