@@ -1585,13 +1585,6 @@ function Macros(){
         </div>
       </div>
 
-      ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
-        background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
-        fontWeight:700,cursor:'pointer',marginBottom:'12px',display:'flex',alignItems:'center',
-        justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
-        <${Ic} n="reset" size=${13} col=${C.muted}/>REPETIR REFEIÇÕES DE ONTEM (${yMeals.length})
-      </button>`}
-
       <div style=${{fontSize:'9px',color:C.muted,letterSpacing:'1.5px',textTransform:'uppercase',marginBottom:'6px',padding:'0 2px'}}>Refeições</div>
       ${core4Totals.map(c=>{
         const isExp=expandedMeal===c.name;
@@ -1674,6 +1667,13 @@ function Macros(){
       <div onClick=${()=>setAddCtx('')} style=${{textAlign:'center',padding:'12px 0 4px',cursor:'pointer'}}>
         <span style=${{fontSize:'11px',color:C.muted,fontWeight:600}}>+ outra refeição</span>
       </div>
+
+      ${yMeals.length>0&&html`<button onClick=${repeatYesterday} style=${{width:'100%',padding:'10px',
+        background:'none',border:'1px solid '+C.border,borderRadius:'9px',color:C.muted,fontSize:'10px',
+        fontWeight:700,cursor:'pointer',marginTop:'12px',display:'flex',alignItems:'center',
+        justifyContent:'center',gap:'7px',letterSpacing:'.3px'}}>
+        <${Ic} n="reset" size=${13} col=${C.muted}/>REPLICAR REFEIÇÕES DE ONTEM (${yMeals.length})
+      </button>`}
     </div>`}
 
     ${stab==='historico'&&html`<div>
