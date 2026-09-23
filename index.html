@@ -43,7 +43,7 @@ input,button,select,textarea{font-family:inherit}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htm/3.1.1/htm.umd.js"></script>
 <script>
 'use strict';
-const BUILD='2026.07.31-12';
+const BUILD='2026.09.23-1';
 const {h,render}=preact;
 const {useState,useEffect,useRef,useMemo,useCallback}=preactHooks;
 const html=htm.bind(h);
@@ -98,35 +98,39 @@ const TACO_EXTRA=[
 /* ── WORKOUT DEFAULTS ── */
 const WD_DEFAULT=[
   {n:1,title:"PEITO + OMBROS",tag:"PUSH",col:"#FF6B35",dim:"rgba(255,107,53,.10)",
-   ex:[{n:"Supino reto barra",d:"4×5–7",note:"carga estável"},{n:"Supino inclinado máquina",d:"4×8–10",note:"novo ângulo"},
-       {n:"Crucifixo reto halter",d:"3×12–15",note:"novo"},{n:"Cross-over polia baixa",d:"3×12–15",note:"foco peitoral superior"},
-       {n:"Elevação lateral halter",d:"4×12–15"},{n:"Crucifixo invertido halter",d:"3×12–15",note:"novo · deltoide posterior"}],
+   ex:[{n:"Supino reto barra",d:"4×6–8",note:"↑ carga"},{n:"Supino inclinado halter",d:"4×8–10",note:"novo · mais amplitude"},
+       {n:"Peck deck (voador)",d:"3×12–15",note:"novo · tensão constante"},{n:"Cross-over polia baixa",d:"3×12–15",note:"pausa 1s no pico"},
+       {n:"Shoulder Press",d:"4×6–8",note:"↑ carga"},{n:"Elevação lateral cabo",d:"4×12–15",note:"↑ volume"},
+       {n:"Crucifixo invertido no cabo",d:"3×12–15",note:"novo · deltoide posterior"}],
    rest:["90–120s compostos","45–60s isoladores"]},
   {n:2,title:"COSTAS + BÍCEPS",tag:"PULL",col:"#4C9EEB",dim:"rgba(76,158,235,.10)",
-   ex:[{n:"Barra fixa Graviton / lastro",d:"4×6–8",note:"↑ reps"},{n:"Remada cavalinho (T-bar row)",d:"4×8–10",note:"novo ângulo"},
-       {n:"Puxada aberta pronada",d:"3×10–12",note:"foco largura"},{n:"Remada baixa unilateral polia",d:"3×10–12",note:"novo · tensão constante"},
-       {n:"Rosca scott barra W",d:"3×8–10",note:"novo"},{n:"Rosca martelo halter em pé",d:"3×10–12"},
-       {n:"Rosca concentrada halter",d:"2×12–15",note:"novo · pico de contração"}],
+   ex:[{n:"Barra fixa Graviton / lastro",d:"4×6–8",note:"pegada aberta · menos assistência"},{n:"Puxada neutra (triângulo)",d:"3×10–12",note:"novo · pegada neutra"},
+       {n:"Remada curvada barra",d:"4×6–8",note:"novo · espessura"},{n:"Remada unilateral halter",d:"3×10–12",note:"novo · amplitude"},
+       {n:"Rosca direta barra W",d:"3×8–10",note:"novo"},{n:"Rosca martelo halter em pé",d:"3×8–10",note:"↑ carga"},
+       {n:"Rosca inclinada halter",d:"2×12–15",note:"novo · cabeça longa"}],
    rest:["90–120s costas","60s bíceps"]},
   {n:3,title:"OMBROS + TRÍCEPS",tag:"PUSH",col:"#A78BFA",dim:"rgba(167,139,250,.10)",
-   ex:[{n:"Desenvolvimento Arnold halter",d:"4×6–8",note:"novo · recrutamento variado"},
-       {n:"Elev. lateral cabo + Face pull",d:"4×(12–15+15–20)",ss:true},
-       {n:"Remada alta halter",d:"3×10–12",note:"novo"},{n:"Tríceps testa barra EZ",d:"3×10–12",note:"novo · cabeça longa"},
-       {n:"Tríceps coice halter",d:"3×12–15",note:"pico de contração"},{n:"Mergulho no banco",d:"2×10–12",note:"progressão peso corporal"}],
+   ex:[{n:"Desenvolvimento halter sentado",d:"4×6–8",note:"novo · mais carga"},
+       {n:"Elev. lateral halter + Face pull",d:"4×(12–15+15–20)",ss:true,note:"troca cabo por halter"},
+       {n:"Elevação frontal anilha",d:"3×10–12",note:"novo · deltoide anterior"},{n:"Tríceps francês halter",d:"3×10–12",note:"novo · cabeça longa"},
+       {n:"Tríceps corda polia",d:"3×12–15",note:"novo · pico de contração"},{n:"Mergulho no banco",d:"3×10–12",note:"+1 série"}],
    rest:["90s compostos","45–60s isoladores"]},
   {n:4,title:"COSTAS — UPPER BACK",tag:"PULL",col:"#34D399",dim:"rgba(52,211,153,.10)",
-   ex:[{n:"Face pull com pausa",d:"4×15–20",note:"pausa 1s no pico"},{n:"Remada cabo unilateral peito apoiado",d:"3×10–12",note:"novo · espessura"},
-       {n:"Remada baixa fechada polia",d:"4×8–10",note:"pegada fechada"},{n:"Puxada unilateral polia",d:"3×10–12 cada lado",note:"novo · corrige assimetrias"},
-       {n:"Encolhimento barra",d:"3×8–10",note:"maior carga"}],
+   ex:[{n:"Remada máquina peito apoiado",d:"4×8–10",note:"novo · espessura"},{n:"Face pull com pausa",d:"3×15–20",note:"pausa 2s no pico"},
+       {n:"Remada baixa aberta polia",d:"3×10–12",note:"novo · pegada aberta"},{n:"Puxada unilateral polia",d:"3×10–12 cada lado",note:"↑ carga"},
+       {n:"Pullover polia alta",d:"3×12–15",note:"novo · dorsal isolado"},{n:"Encolhimento halter",d:"4×10–12",note:"novo · amplitude"}],
    rest:["75–90s","Foco em postura e contração"]},
   {n:5,title:"PERNAS COMPLETO",tag:"LEGS",col:"#F87171",dim:"rgba(248,113,113,.10)",
-   ex:[{n:"Agachamento búlgaro halter",d:"4×8–10 cada perna",note:"novo · unilateral"},{n:"Leg press 45° pés altos",d:"3×10–12",note:"foco posterior/glúteo"},
-       {n:"Cadeira extensora unilateral",d:"3×12–15",note:"pico de contração"},{n:"Stiff halter",d:"4×8–10",note:"novo · posterior de coxa"},
-       {n:"Abdutora + Adutora",d:"3×15–20",ss:true,note:"↑ reps"},{n:"Panturrilha no leg press",d:"3×12–15",note:"nova amplitude"},
-       {n:"Prancha lateral + elevação de pernas",d:"3 rounds",note:"variação lateral"}],
+   ex:[{n:"Agachamento no Smith",d:"4×6–8",note:"novo · base bilateral"},{n:"Leg press 45°",d:"4×10–12",note:"pés na largura do quadril"},
+       {n:"Cadeira extensora",d:"3×12–15",note:"drop set na última"},{n:"Mesa flexora",d:"3×10–12",note:"novo · isquiotibiais"},
+       {n:"Levantamento terra romeno barra",d:"4×8–10",note:"novo · posterior de coxa"},{n:"Abdutora + Adutora",d:"3×15–20",ss:true,note:"↑ carga"},
+       {n:"Panturrilha em pé no Smith",d:"4×12–15",note:"novo · pausa embaixo"},{n:"Abdominal na polia + prancha",d:"3 rounds",note:"novo"}],
    rest:["90–120s compostos","60s isoladores"]},
 ];
-const TAGC={PUSH:"#FF6B35",PULL:"#4C9EEB",LEGS:"#F87171",UPPER:"#A78BFA",LOWER:"#34D399",FULL:"#F59E0B"};
+/* Revisão do programa embutida no código. Quando sobe, o programa salvo no aparelho recebe
+   os exercícios novos (mantendo id, título, cor, tag e descansos de cada dia), a contagem de
+   semanas zera e a versão anterior fica guardada em 'programPrev' para recuperação. */
+const PROGRAM_REV=2;const TAGC={PUSH:"#FF6B35",PULL:"#4C9EEB",LEGS:"#F87171",UPPER:"#A78BFA",LOWER:"#34D399",FULL:"#F59E0B"};
 const tagDim=col=>{const h=col.replace('#','');const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);return`rgba(${r},${g},${b},.1)`;};
 const TAG_OPTIONS=Object.keys(TAGC).map(t=>({tag:t,col:TAGC[t]}));
 /* Cada dia tem sua PRÓPRIA cor (day.col), independente da tag/grupo muscular — é assim que
@@ -142,6 +146,19 @@ const nextDayColor=existing=>{
 const DEFAULT_PROGRAM=WD_DEFAULT.map((d,i)=>({id:'d'+(i+1),title:d.title,tag:d.tag,col:d.col,rest:d.rest,ex:d.ex}));
 const getProgram=()=>{
   let p=ls.g('program');
+  if((ls.g('programRev')||1)<PROGRAM_REV){
+    if(p&&p.length){
+      ls.s('programPrev',p);
+      p=p.map((d,i)=>{
+        const nd=DEFAULT_PROGRAM.find(x=>x.id===d.id)||(DEFAULT_PROGRAM[i]&&DEFAULT_PROGRAM[i].tag===d.tag?DEFAULT_PROGRAM[i]:null);
+        return nd?Object.assign({},d,{ex:nd.ex.map(e=>Object.assign({},e))}):d;
+      });
+      ls.s('program',p);
+      ls.s('programVersion',(ls.g('programVersion')||1)+1);
+    }
+    ls.s('programStart',today());
+    ls.s('programRev',PROGRAM_REV);
+  }
   if(!p||!p.length)return DEFAULT_PROGRAM;
   let changed=false;
   const usedCols=new Set(p.filter(d=>d.col).map(d=>d.col));
